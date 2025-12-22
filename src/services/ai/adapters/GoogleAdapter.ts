@@ -1,8 +1,9 @@
 /**
  * Google AI (Gemini) API Adapter
  * Direct fetch implementation (no SDK)
+ * Supports streaming via SSE
  */
-import type { AIRequest, AIResponse, Message } from "../../types";
+import type { AIRequest, AIResponse, Message, StreamChunk } from "../../types";
 
 interface GoogleContent {
   role: "user" | "model";
@@ -99,6 +100,75 @@ export class GoogleAdapter {
           }
         : undefined,
     };
+  }
+
+  /**
+   * Stream message from Google AI API using SSE
+   */
+  async *streamMessage(request: AIRequest): AsyncGenerator<StreamChunk> {
+    const { messages, config, systemPrompt } = request;
+
+    const response = await fetch(
+      `${this.baseUrl}/models/${config.model}:streamGenerateContent?key=${config.apiKey}&alt=sse`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: this.formatMessages(messages, systemPrompt),
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        error.error?.message || `Google AI API error: ${response.status}`
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("No response body for streaming");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          yield { content: "", done: true };
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const text = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
+              if (text) {
+                yield { content: text, done: false };
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   /**

@@ -9,6 +9,7 @@ import type {
   Message,
   ProviderConfig,
   ProviderId,
+  StreamChunk,
 } from "../types";
 import { anthropicAdapter } from "./adapters/AnthropicAdapter";
 import { googleAdapter } from "./adapters/GoogleAdapter";
@@ -116,6 +117,58 @@ export class AIService implements IAIService {
       config,
       systemPrompt: SYSTEM_PROMPT,
     });
+  }
+
+  /**
+   * Stream chat message with history injection
+   * Yields chunks as they arrive from the API
+   * This is the primary method for real-time UI updates
+   */
+  async *streamChat(
+    userMessage: string,
+    conversationHistory: Message[],
+    config: ProviderConfig
+  ): AsyncGenerator<StreamChunk> {
+    // Build the full message list for history injection
+    const allMessages: Message[] = [
+      ...conversationHistory,
+      {
+        id: "pending",
+        conversationId: "pending",
+        role: "user",
+        content: userMessage,
+        timestamp: Date.now(),
+      },
+    ];
+
+    const request: AIRequest = {
+      messages: allMessages,
+      config,
+      systemPrompt: SYSTEM_PROMPT,
+    };
+
+    // Route to the appropriate adapter's stream method
+    switch (config.provider) {
+      case "openai":
+        yield* openAIAdapter.streamMessage(request);
+        break;
+
+      case "anthropic":
+        yield* anthropicAdapter.streamMessage(request);
+        break;
+
+      case "google":
+        yield* googleAdapter.streamMessage(request);
+        break;
+
+      case "bedrock":
+        throw new Error(
+          "AWS Bedrock streaming requires server-side integration."
+        );
+
+      default:
+        throw new Error(`Unknown provider: ${config.provider}`);
+    }
   }
 }
 

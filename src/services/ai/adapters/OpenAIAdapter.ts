@@ -1,8 +1,9 @@
 /**
  * OpenAI API Adapter
  * Direct fetch implementation (no SDK) for smaller bundle size
+ * Supports streaming via SSE (Server-Sent Events)
  */
-import type { AIRequest, AIResponse, Message } from "../../types";
+import type { AIRequest, AIResponse, Message, StreamChunk } from "../../types";
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant";
@@ -94,6 +95,77 @@ export class OpenAIAdapter {
           }
         : undefined,
     };
+  }
+
+  /**
+   * Stream message from OpenAI API using SSE
+   * Yields chunks as they arrive for real-time display
+   */
+  async *streamMessage(request: AIRequest): AsyncGenerator<StreamChunk> {
+    const { messages, config, systemPrompt, maxTokens = 4096 } = request;
+
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: this.formatMessages(messages, systemPrompt),
+        max_tokens: maxTokens,
+        stream: true, // Enable streaming
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        error.error?.message || `OpenAI API error: ${response.status}`
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("No response body for streaming");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          yield { content: "", done: true };
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const content = json.choices?.[0]?.delta?.content || "";
+              if (content) {
+                yield { content, done: false };
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   /**

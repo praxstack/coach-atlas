@@ -1,8 +1,9 @@
 /**
  * Anthropic (Claude) API Adapter
  * Direct fetch implementation (no SDK)
+ * Supports streaming via SSE
  */
-import type { AIRequest, AIResponse, Message } from "../../types";
+import type { AIRequest, AIResponse, Message, StreamChunk } from "../../types";
 
 interface AnthropicMessage {
   role: "user" | "assistant";
@@ -81,6 +82,84 @@ export class AnthropicAdapter {
           }
         : undefined,
     };
+  }
+
+  /**
+   * Stream message from Anthropic API using SSE
+   */
+  async *streamMessage(request: AIRequest): AsyncGenerator<StreamChunk> {
+    const { messages, config, systemPrompt, maxTokens = 4096 } = request;
+
+    const response = await fetch(`${this.baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "x-api-key": config.apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: this.formatMessages(messages),
+        stream: true, // Enable streaming
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        error.error?.message || `Anthropic API error: ${response.status}`
+      );
+    }
+
+    if (!response.body) {
+      throw new Error("No response body for streaming");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          yield { content: "", done: true };
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          // Anthropic SSE format: event: and data: lines
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              // Anthropic sends content_block_delta events with text
+              if (json.type === "content_block_delta" && json.delta?.text) {
+                yield { content: json.delta.text, done: false };
+              }
+              // message_stop indicates end of stream
+              if (json.type === "message_stop") {
+                yield { content: "", done: true };
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   /**

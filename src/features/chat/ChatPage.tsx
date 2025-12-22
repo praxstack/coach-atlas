@@ -41,7 +41,9 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [streamingContent, setStreamingContent] = useState<string>(""); // Real-time streaming content
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Initialize: Load config and conversation from IndexedDB
   const initialize = useCallback(async () => {
@@ -126,7 +128,7 @@ What brings you here today?`,
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Send message using AIService with history injection
+  // Send message using AIService with STREAMING
   const handleSend = async () => {
     if (!input.trim() || !config || !conversation || isLoading) return;
 
@@ -134,6 +136,10 @@ What brings you here today?`,
     setInput("");
     setIsLoading(true);
     setError(null);
+    setStreamingContent("");
+
+    // Create abort controller for cancellation
+    abortControllerRef.current = new AbortController();
 
     try {
       // 1. Save user message to IndexedDB
@@ -144,7 +150,7 @@ What brings you here today?`,
         timestamp: Date.now(),
       });
 
-      // 2. Update UI immediately
+      // 2. Update UI immediately with user message
       const newUserMsg: UIMessage = {
         id: userMessage.id,
         role: "user",
@@ -155,37 +161,46 @@ What brings you here today?`,
       // 3. Get full conversation history from IndexedDB (for history injection)
       const historyMessages = await storageService.getMessages(conversation.id);
 
-      // 4. Call AIService with full history
-      const response = await aiService.chat(userContent, historyMessages, config);
+      // 4. Stream response from AIService
+      let fullContent = "";
 
-      // 5. Save assistant response to IndexedDB
+      for await (const chunk of aiService.streamChat(userContent, historyMessages, config)) {
+        if (chunk.done) break;
+
+        fullContent += chunk.content;
+        setStreamingContent(fullContent);
+      }
+
+      // 5. Save complete assistant response to IndexedDB
       const assistantMessage = await storageService.saveMessage({
         conversationId: conversation.id,
         role: "assistant",
-        content: response.content,
+        content: fullContent,
         timestamp: Date.now(),
         metadata: {
-          model: response.model,
+          model: config.model,
           provider: config.provider,
-          tokensUsed: response.usage?.totalTokens,
         },
       });
 
-      // 6. Update UI with assistant response
+      // 6. Move streaming content to permanent messages
+      setStreamingContent("");
       setMessages((prev) => [
         ...prev,
         {
           id: assistantMessage.id,
           role: "assistant",
-          content: response.content,
+          content: fullContent,
         },
       ]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred";
       setError(errorMessage);
       toast.error(errorMessage);
+      setStreamingContent(""); // Clear streaming on error
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -281,13 +296,24 @@ What brings you here today?`,
             </div>
           ))}
 
+          {/* Streaming message - shows real-time content */}
           {isLoading && (
             <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4 text-primary" />
               </div>
-              <div className="bg-secondary rounded-2xl rounded-bl-md px-4 py-3">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              <div className="max-w-[85%] bg-secondary rounded-2xl rounded-bl-md px-4 py-3">
+                {streamingContent ? (
+                  <MarkdownRenderer
+                    content={streamingContent}
+                    className="text-sm"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Thinking...</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
