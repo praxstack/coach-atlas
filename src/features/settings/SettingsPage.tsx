@@ -1,90 +1,113 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+/**
+ * SettingsPage - API Configuration
+ * Uses StorageService for persistence (IndexedDB)
+ */
+import { useStorageService } from "@/app/ServiceContext";
+import { Provider, providers } from "@/services/providers";
 import { Button } from "@/shared/ui/button";
-import { 
-  providers, 
-  Provider, 
-  ProviderConfig, 
-  saveConfig, 
-  loadConfig, 
-  clearConfig,
-  StoredConfig 
-} from "@/services/providers";
-import { 
-  ArrowLeft, 
-  Check, 
-  Key, 
-  Shield, 
-  Sparkles,
+import {
+  ArrowLeft,
+  Check,
   Eye,
   EyeOff,
-  Trash2
+  Key,
+  Shield,
+  Sparkles,
+  Trash2,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+
+interface StoredConfig {
+  provider: string;
+  apiKey: string;
+  model: string;
+}
 
 const Settings = () => {
   const navigate = useNavigate();
+  const storageService = useStorageService();
+
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>("");
-  const [credentials, setCredentials] = useState<Record<string, string>>({});
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [apiKey, setApiKey] = useState<string>("");
+  const [showApiKey, setShowApiKey] = useState(false);
   const [savedConfig, setSavedConfig] = useState<StoredConfig | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load existing config from IndexedDB
+  const loadConfiguration = useCallback(async () => {
+    try {
+      const config = await storageService.loadProviderConfig();
+      if (config) {
+        setSavedConfig(config);
+        setSelectedProvider(config.provider as Provider);
+        setSelectedModel(config.model);
+        setApiKey(config.apiKey);
+      }
+    } catch (err) {
+      console.error("Failed to load config:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [storageService]);
 
   useEffect(() => {
-    const config = loadConfig();
-    if (config) {
-      setSavedConfig(config);
-      setSelectedProvider(config.provider);
-      setSelectedModel(config.model);
-      setCredentials(config.credentials);
-    }
-  }, []);
+    loadConfiguration();
+  }, [loadConfiguration]);
 
-  const currentProvider = providers.find(p => p.id === selectedProvider);
+  const currentProvider = providers.find((p) => p.id === selectedProvider);
 
   const handleProviderSelect = (providerId: Provider) => {
     setSelectedProvider(providerId);
     setSelectedModel("");
-    setCredentials({});
-    setShowPasswords({});
-  };
-
-  const handleCredentialChange = (key: string, value: string) => {
-    setCredentials(prev => ({ ...prev, [key]: value }));
-  };
-
-  const togglePasswordVisibility = (key: string) => {
-    setShowPasswords(prev => ({ ...prev, [key]: !prev[key] }));
+    setApiKey("");
+    setShowApiKey(false);
   };
 
   const isFormValid = () => {
-    if (!selectedProvider || !selectedModel) return false;
-    const provider = providers.find(p => p.id === selectedProvider);
-    if (!provider) return false;
-    return provider.fields.every(field => credentials[field.key]?.trim());
+    return selectedProvider && selectedModel && apiKey.trim();
   };
 
-  const handleSave = () => {
-    if (!selectedProvider || !selectedModel) return;
-    
-    const config: StoredConfig = {
-      provider: selectedProvider,
-      model: selectedModel,
-      credentials,
-    };
-    
-    saveConfig(config);
-    setSavedConfig(config);
-    toast.success("API configuration saved successfully!");
+  const handleSave = async () => {
+    if (!selectedProvider || !selectedModel || !apiKey.trim()) return;
+
+    try {
+      await storageService.saveProviderConfig({
+        provider: selectedProvider,
+        model: selectedModel,
+        apiKey: apiKey.trim(),
+      });
+
+      const newConfig: StoredConfig = {
+        provider: selectedProvider,
+        model: selectedModel,
+        apiKey: apiKey.trim(),
+      };
+      setSavedConfig(newConfig);
+      toast.success("API configuration saved successfully!");
+    } catch (err) {
+      console.error("Failed to save config:", err);
+      toast.error("Failed to save configuration");
+    }
   };
 
-  const handleClear = () => {
-    clearConfig();
-    setSavedConfig(null);
-    setSelectedProvider(null);
-    setSelectedModel("");
-    setCredentials({});
-    toast.success("Configuration cleared");
+  const handleClear = async () => {
+    try {
+      await storageService.deleteSetting("provider");
+      await storageService.deleteSetting("apiKey");
+      await storageService.deleteSetting("model");
+
+      setSavedConfig(null);
+      setSelectedProvider(null);
+      setSelectedModel("");
+      setApiKey("");
+      toast.success("Configuration cleared");
+    } catch (err) {
+      console.error("Failed to clear config:", err);
+      toast.error("Failed to clear configuration");
+    }
   };
 
   const handleStartChat = () => {
@@ -92,6 +115,14 @@ const Settings = () => {
       navigate("/chat");
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading settings...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -103,7 +134,9 @@ const Settings = () => {
           </Button>
           <div>
             <h1 className="text-xl font-bold">API Configuration</h1>
-            <p className="text-sm text-muted-foreground">Bring your own API keys</p>
+            <p className="text-sm text-muted-foreground">
+              Bring your own API keys
+            </p>
           </div>
         </div>
       </header>
@@ -113,10 +146,13 @@ const Settings = () => {
         <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/20 mb-8">
           <Shield className="w-5 h-5 text-primary mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-foreground mb-1">Your keys stay local</p>
+            <p className="font-medium text-foreground mb-1">
+              Your keys stay local
+            </p>
             <p className="text-muted-foreground">
-              API keys are stored in your browser's local storage and never sent to our servers.
-              They're used directly to communicate with your chosen AI provider.
+              API keys are stored securely in your browser's IndexedDB and never
+              sent to our servers. They're used directly to communicate with
+              your chosen AI provider.
             </p>
           </div>
         </div>
@@ -130,10 +166,16 @@ const Settings = () => {
               </div>
               <div>
                 <p className="font-medium">
-                  {providers.find(p => p.id === savedConfig.provider)?.name} configured
+                  {providers.find((p) => p.id === savedConfig.provider)?.name}{" "}
+                  configured
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Model: {providers.find(p => p.id === savedConfig.provider)?.models.find(m => m.id === savedConfig.model)?.name}
+                  Model:{" "}
+                  {
+                    providers
+                      .find((p) => p.id === savedConfig.provider)
+                      ?.models.find((m) => m.id === savedConfig.model)?.name
+                  }
                 </p>
               </div>
             </div>
@@ -153,7 +195,9 @@ const Settings = () => {
         {/* Provider Selection */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">1</span>
+            <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
+              1
+            </span>
             Choose Provider
           </h2>
           <div className="grid sm:grid-cols-2 gap-4">
@@ -173,7 +217,9 @@ const Settings = () => {
                     <Check className="w-4 h-4 text-primary" />
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">{provider.description}</p>
+                <p className="text-sm text-muted-foreground">
+                  {provider.description}
+                </p>
               </button>
             ))}
           </div>
@@ -183,7 +229,9 @@ const Settings = () => {
         {currentProvider && (
           <div className="mb-8 animate-fade-in">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">2</span>
+              <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
+                2
+              </span>
               Select Model
             </h2>
             <div className="grid sm:grid-cols-2 gap-3">
@@ -203,51 +251,68 @@ const Settings = () => {
                       <Check className="w-4 h-4 text-primary" />
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">{model.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {model.description}
+                  </p>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {/* Credentials */}
+        {/* API Key Input */}
         {currentProvider && selectedModel && (
           <div className="mb-8 animate-fade-in">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">3</span>
-              Enter Credentials
+              <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
+                3
+              </span>
+              Enter API Key
             </h2>
-            <div className="space-y-4">
-              {currentProvider.fields.map((field) => (
-                <div key={field.key}>
-                  <label className="block text-sm font-medium mb-2">
-                    {field.label}
-                  </label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <input
-                      type={field.type === 'password' && !showPasswords[field.key] ? 'password' : 'text'}
-                      value={credentials[field.key] || ""}
-                      onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      className="w-full bg-secondary border border-border rounded-xl pl-10 pr-12 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                    />
-                    {field.type === 'password' && (
-                      <button
-                        type="button"
-                        onClick={() => togglePasswordVisibility(field.key)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showPasswords[field.key] ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                {currentProvider.name} API Key
+              </label>
+              <div className="relative">
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={`Enter your ${currentProvider.name} API key`}
+                  className="w-full bg-secondary border border-border rounded-xl pl-10 pr-12 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showApiKey ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Get your API key from{" "}
+                <a
+                  href={
+                    currentProvider.id === "openai"
+                      ? "https://platform.openai.com/api-keys"
+                      : currentProvider.id === "anthropic"
+                        ? "https://console.anthropic.com/settings/keys"
+                        : currentProvider.id === "google"
+                          ? "https://makersuite.google.com/app/apikey"
+                          : "#"
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  {currentProvider.name}'s console
+                </a>
+              </p>
             </div>
           </div>
         )}

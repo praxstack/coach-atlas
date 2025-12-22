@@ -1,5 +1,11 @@
+/**
+ * ChatPage - Main Chat Interface
+ * Uses AIService and StorageService for persistence
+ */
+import { useAIService, useStorageService } from "@/app/ServiceContext";
 import { MarkdownRenderer } from "@/lib/markdown-viewer";
-import { loadConfig, providers, StoredConfig } from "@/services/providers";
+import { providers } from "@/services/providers";
+import type { Conversation, Message, ProviderConfig, ProviderId } from "@/services/types";
 import { Button } from "@/shared/ui/button";
 import {
   AlertCircle,
@@ -9,198 +15,171 @@ import {
   Send,
   Settings,
   Sparkles,
-  User
+  User,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-interface Message {
-  id: number;
+// UI message type (extends service Message with optional fields during loading)
+interface UIMessage {
+  id: string;
   role: "user" | "assistant";
   content: string;
 }
 
-const SYSTEM_PROMPT = `You are Coach Atlas, a world-class technical mentor who combines deep interview preparation coaching with comprehensive tutorial creation. You teach through guided discovery, provide brutally honest feedback, and create production-ready learning resources.
-
-Your core principles:
-1. Build Problem Solvers, Not Solution Memorizers
-2. Guided Discovery First - Ask questions before giving answers
-3. Brutal Honesty Always - Tell it like it is, no sugarcoating
-4. Visual Learning - Use diagrams, tables, and structured examples
-5. Production-Ready - Everything you teach should work in real jobs
-
-For interview coaching: Use the Socratic method with escalating hints.
-For tutorials: Create comprehensive, beginner-to-advanced guides with code examples.
-For system design: Guide through requirements, capacity, API design, database, architecture, and trade-offs.
-
-Always be direct, professional, and focused on building real skills.`;
-
 const Chat = () => {
   const navigate = useNavigate();
-  const [config, setConfig] = useState<StoredConfig | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const aiService = useAIService();
+  const storageService = useStorageService();
+
+  // State
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const [config, setConfig] = useState<ProviderConfig | null>(null);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const storedConfig = loadConfig();
-    if (!storedConfig) {
-      toast.error("Please configure your API key first");
-      navigate("/settings");
-      return;
-    }
-    setConfig(storedConfig);
+  // Initialize: Load config and conversation from IndexedDB
+  const initialize = useCallback(async () => {
+    try {
+      // Load provider config
+      const storedConfig = await storageService.loadProviderConfig();
+      if (!storedConfig) {
+        toast.error("Please configure your API key first");
+        navigate("/settings");
+        return;
+      }
 
-    // Initial greeting
-    setMessages([{
-      id: 1,
-      role: "assistant",
-      content: `I'm Coach Atlas, your technical interview mentor and tutorial creator.
+      setConfig({
+        provider: storedConfig.provider as ProviderId,
+        apiKey: storedConfig.apiKey,
+        model: storedConfig.model,
+      });
+
+      // Get or create conversation
+      const conv = await storageService.getOrCreateDefaultConversation();
+      setConversation(conv);
+
+      // Load existing messages
+      const storedMessages = await storageService.getMessages(conv.id);
+
+      if (storedMessages.length > 0) {
+        // Convert to UI format
+        setMessages(
+          storedMessages.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }))
+        );
+      } else {
+        // First time: show welcome message
+        const welcomeMessage: Message = {
+          id: "welcome",
+          conversationId: conv.id,
+          role: "assistant",
+          content: `I'm Coach Atlas, your technical interview mentor and tutorial creator.
 
 I help you through:
 • **Interview prep** (coding, system design, behavioral)
 • **Problem-solving** with guided discovery
 • **Comprehensive tutorials** on any technical topic
 
-What brings you here today?`
-    }]);
-  }, [navigate]);
+What brings you here today?`,
+          timestamp: Date.now(),
+        };
 
+        // Save welcome message
+        const saved = await storageService.saveMessage({
+          conversationId: conv.id,
+          role: "assistant",
+          content: welcomeMessage.content,
+          timestamp: Date.now(),
+        });
+
+        setMessages([
+          {
+            id: saved.id,
+            role: "assistant",
+            content: saved.content,
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to initialize chat:", err);
+      toast.error("Failed to load chat. Please try again.");
+    } finally {
+      setIsInitializing(false);
+    }
+  }, [navigate, storageService]);
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const callOpenAI = async (allMessages: Message[]) => {
-    if (!config) return null;
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${config.credentials.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...allMessages.map(m => ({ role: m.role, content: m.content }))
-        ],
-        max_tokens: 4096,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || "OpenAI API error");
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  };
-
-  const callAnthropic = async (allMessages: Message[]) => {
-    if (!config) return null;
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": config.credentials.apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: config.model,
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        messages: allMessages.map(m => ({ role: m.role, content: m.content }))
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || "Anthropic API error");
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-  };
-
-  const callGoogle = async (allMessages: Message[]) => {
-    if (!config) return null;
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.credentials.apiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-            ...allMessages.map(m => ({
-              role: m.role === "assistant" ? "model" : "user",
-              parts: [{ text: m.content }]
-            }))
-          ],
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || "Google AI API error");
-    }
-
-    const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
-  };
-
+  // Send message using AIService with history injection
   const handleSend = async () => {
-    if (!input.trim() || !config || isLoading) return;
+    if (!input.trim() || !config || !conversation || isLoading) return;
 
-    const userMessage: Message = {
-      id: messages.length + 1,
-      role: "user",
-      content: input,
-    };
-
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    const userContent = input.trim();
     setInput("");
     setIsLoading(true);
     setError(null);
 
     try {
-      let response: string | null = null;
+      // 1. Save user message to IndexedDB
+      const userMessage = await storageService.saveMessage({
+        conversationId: conversation.id,
+        role: "user",
+        content: userContent,
+        timestamp: Date.now(),
+      });
 
-      switch (config.provider) {
-        case "openai":
-          response = await callOpenAI(newMessages);
-          break;
-        case "anthropic":
-          response = await callAnthropic(newMessages);
-          break;
-        case "google":
-          response = await callGoogle(newMessages);
-          break;
-        case "bedrock":
-          throw new Error("AWS Bedrock requires server-side integration. Please use a different provider or set up an edge function.");
-        default:
-          throw new Error("Unknown provider");
-      }
+      // 2. Update UI immediately
+      const newUserMsg: UIMessage = {
+        id: userMessage.id,
+        role: "user",
+        content: userContent,
+      };
+      setMessages((prev) => [...prev, newUserMsg]);
 
-      if (response) {
-        setMessages(prev => [...prev, {
-          id: prev.length + 1,
+      // 3. Get full conversation history from IndexedDB (for history injection)
+      const historyMessages = await storageService.getMessages(conversation.id);
+
+      // 4. Call AIService with full history
+      const response = await aiService.chat(userContent, historyMessages, config);
+
+      // 5. Save assistant response to IndexedDB
+      const assistantMessage = await storageService.saveMessage({
+        conversationId: conversation.id,
+        role: "assistant",
+        content: response.content,
+        timestamp: Date.now(),
+        metadata: {
+          model: response.model,
+          provider: config.provider,
+          tokensUsed: response.usage?.totalTokens,
+        },
+      });
+
+      // 6. Update UI with assistant response
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMessage.id,
           role: "assistant",
-          content: response,
-        }]);
-      }
+          content: response.content,
+        },
+      ]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred";
       setError(errorMessage);
@@ -210,8 +189,23 @@ What brings you here today?`
     }
   };
 
-  const providerInfo = config ? providers.find(p => p.id === config.provider) : null;
-  const modelInfo = providerInfo?.models.find(m => m.id === config?.model);
+  // Get provider info for display
+  const providerInfo = config
+    ? providers.find((p) => p.id === config.provider)
+    : null;
+  const modelInfo = providerInfo?.models.find((m) => m.id === config?.model);
+
+  // Loading state
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading conversation...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -230,12 +224,18 @@ What brings you here today?`
                 <h1 className="font-semibold">Coach Atlas</h1>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Sparkles className="w-3 h-3 text-primary" />
-                  <span>{providerInfo?.name} • {modelInfo?.name}</span>
+                  <span>
+                    {providerInfo?.name} • {modelInfo?.name}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/settings")}
+          >
             <Settings className="w-5 h-5" />
           </Button>
         </div>
@@ -249,25 +249,33 @@ What brings you here today?`
               key={message.id}
               className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
             >
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                message.role === "user"
-                  ? "bg-secondary"
-                  : "bg-primary/20"
-              }`}>
-                {message.role === "user"
-                  ? <User className="w-4 h-4 text-foreground" />
-                  : <Bot className="w-4 h-4 text-primary" />
-                }
-              </div>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                message.role === "user"
-                  ? "bg-primary text-primary-foreground rounded-br-md"
-                  : "bg-secondary rounded-bl-md"
-              }`}>
-                {message.role === "assistant" ? (
-                  <MarkdownRenderer content={message.content} className="text-sm" />
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                  message.role === "user" ? "bg-secondary" : "bg-primary/20"
+                }`}
+              >
+                {message.role === "user" ? (
+                  <User className="w-4 h-4 text-foreground" />
                 ) : (
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                  <Bot className="w-4 h-4 text-primary" />
+                )}
+              </div>
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                  message.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-br-md"
+                    : "bg-secondary rounded-bl-md"
+                }`}
+              >
+                {message.role === "assistant" ? (
+                  <MarkdownRenderer
+                    content={message.content}
+                    className="text-sm"
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                    {message.content}
+                  </p>
                 )}
               </div>
             </div>
@@ -303,7 +311,9 @@ What brings you here today?`
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+              onKeyDown={(e) =>
+                e.key === "Enter" && !e.shiftKey && handleSend()
+              }
               placeholder="Ask a question or describe a problem..."
               disabled={isLoading}
               className="flex-1 bg-secondary border border-border rounded-xl px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:opacity-50"
@@ -322,7 +332,11 @@ What brings you here today?`
             </Button>
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
-            {["TUTORIAL: Binary Search", "Design a URL Shortener", "Two Sum Problem"].map((suggestion) => (
+            {[
+              "TUTORIAL: Binary Search",
+              "Design a URL Shortener",
+              "Two Sum Problem",
+            ].map((suggestion) => (
               <button
                 key={suggestion}
                 onClick={() => setInput(suggestion)}
