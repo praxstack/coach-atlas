@@ -1,15 +1,24 @@
 /**
- * SettingsPage - API Configuration
- * Uses StorageService for persistence (IndexedDB)
+ * SettingsPage - API Configuration with Dynamic Model Discovery
+ * Fetches available models from provider APIs after API key is entered
  */
 import { useStorageService } from "@/app/ServiceContext";
+import {
+  DiscoveredModel,
+  fetchAnthropicModels,
+  fetchBedrockModels,
+  fetchGoogleModels,
+  fetchOpenAIModels
+} from "@/services/modelDiscovery";
 import { Provider, providers } from "@/services/providers";
 import { Button } from "@/shared/ui/button";
 import {
   ArrowLeft,
   Check,
   Key,
+  Loader2,
   MapPin,
+  RefreshCw,
   Shield,
   Sparkles,
   Trash2
@@ -36,6 +45,12 @@ const Settings = () => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [savedConfig, setSavedConfig] = useState<StoredConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Dynamic model loading state
+  const [dynamicModels, setDynamicModels] = useState<DiscoveredModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
+  const [hasLoadedModels, setHasLoadedModels] = useState(false);
 
   // Load existing config from IndexedDB
   const loadConfiguration = useCallback(async () => {
@@ -69,11 +84,61 @@ const Settings = () => {
     setApiKey("");
     setRegion("us-east-1");
     setShowApiKey(false);
+    setDynamicModels([]);
+    setHasLoadedModels(false);
+    setModelLoadError(null);
+  };
+
+  // Fetch models dynamically from provider API
+  const handleFetchModels = async () => {
+    if (!selectedProvider || !apiKey.trim()) return;
+
+    setIsLoadingModels(true);
+    setModelLoadError(null);
+    setDynamicModels([]);
+
+    try {
+      let result;
+
+      switch (selectedProvider) {
+        case 'openai':
+          result = await fetchOpenAIModels(apiKey.trim());
+          break;
+        case 'anthropic':
+          result = await fetchAnthropicModels(apiKey.trim());
+          break;
+        case 'bedrock':
+          result = await fetchBedrockModels(apiKey.trim(), region.trim() || 'us-east-1');
+          break;
+        case 'google':
+          result = await fetchGoogleModels(apiKey.trim());
+          break;
+        default:
+          result = { success: false, models: [], error: 'Unknown provider' };
+      }
+
+      if (result.success && result.models.length > 0) {
+        setDynamicModels(result.models);
+        setHasLoadedModels(true);
+        toast.success(`Found ${result.models.length} models!`);
+      } else if (result.error) {
+        setModelLoadError(result.error);
+        toast.error(result.error);
+      } else {
+        setModelLoadError('No models found');
+        toast.error('No models found for this API key');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch models';
+      setModelLoadError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoadingModels(false);
+    }
   };
 
   const isFormValid = () => {
     if (!selectedProvider || !selectedModel || !apiKey.trim()) return false;
-    // Bedrock requires region
     if (selectedProvider === 'bedrock' && !region.trim()) return false;
     return true;
   };
@@ -88,7 +153,6 @@ const Settings = () => {
         apiKey: apiKey.trim(),
       };
 
-      // Add region for Bedrock
       if (selectedProvider === 'bedrock' && region.trim()) {
         configToSave.region = region.trim();
       }
@@ -114,6 +178,8 @@ const Settings = () => {
       setSelectedModel("");
       setApiKey("");
       setRegion("us-east-1");
+      setDynamicModels([]);
+      setHasLoadedModels(false);
       toast.success("Configuration cleared");
     } catch (err) {
       console.error("Failed to clear config:", err);
@@ -126,6 +192,11 @@ const Settings = () => {
       navigate("/chat");
     }
   };
+
+  // Get models to display (dynamic or static fallback)
+  const modelsToDisplay = hasLoadedModels && dynamicModels.length > 0
+    ? dynamicModels.map(m => ({ id: m.id, name: m.name, description: m.description || '' }))
+    : currentProvider?.models || [];
 
   if (isLoading) {
     return (
@@ -181,12 +252,7 @@ const Settings = () => {
                   configured
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Model:{" "}
-                  {
-                    providers
-                      .find((p) => p.id === savedConfig.provider)
-                      ?.models.find((m) => m.id === savedConfig.model)?.name
-                  }
+                  Model: {savedConfig.model}
                   {savedConfig.region && ` • Region: ${savedConfig.region}`}
                 </p>
               </div>
@@ -237,49 +303,14 @@ const Settings = () => {
           </div>
         </div>
 
-        {/* Model Selection */}
+        {/* API Key Input - MOVED UP for dynamic loading */}
         {currentProvider && (
           <div className="mb-8 animate-fade-in">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
                 2
               </span>
-              Select Model
-            </h2>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {currentProvider.models.map((model) => (
-                <button
-                  key={model.id}
-                  onClick={() => setSelectedModel(model.id)}
-                  className={`p-4 rounded-xl border text-left transition-all ${
-                    selectedModel === model.id
-                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                      : "border-border hover:border-primary/50 hover:bg-secondary/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium">{model.name}</span>
-                    {selectedModel === model.id && (
-                      <Check className="w-4 h-4 text-primary" />
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {model.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* API Key Input */}
-        {currentProvider && selectedModel && (
-          <div className="mb-8 animate-fade-in">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
-                3
-              </span>
-              Enter Credentials
+              Enter API Key
             </h2>
             <div className="space-y-4">
               {/* API Key Field */}
@@ -292,7 +323,10 @@ const Settings = () => {
                   <input
                     type={showApiKey ? "text" : "password"}
                     value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
+                    onChange={(e) => {
+                      setApiKey(e.target.value);
+                      setHasLoadedModels(false); // Reset when key changes
+                    }}
                     placeholder={currentProvider.fields[0]?.placeholder || "Enter your API key"}
                     className="w-full bg-secondary border border-border rounded-xl pl-10 pr-12 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                   />
@@ -317,7 +351,10 @@ const Settings = () => {
                     <input
                       type="text"
                       value={region}
-                      onChange={(e) => setRegion(e.target.value)}
+                      onChange={(e) => {
+                        setRegion(e.target.value);
+                        setHasLoadedModels(false); // Reset when region changes
+                      }}
                       placeholder="us-east-1"
                       className="w-full bg-secondary border border-border rounded-xl pl-10 pr-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                     />
@@ -328,12 +365,88 @@ const Settings = () => {
                 </div>
               )}
 
-              <p className="text-xs text-muted-foreground">
-                {currentProvider.id === "bedrock"
-                  ? "Enter your Bedrock API key and the AWS region where you have Bedrock access."
-                  : "Get your API key from the provider's console."}
-              </p>
+              {/* Fetch Models Button */}
+              {apiKey.trim() && (
+                <Button
+                  onClick={handleFetchModels}
+                  disabled={isLoadingModels}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {isLoadingModels ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Fetching models...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      {hasLoadedModels ? 'Refresh Models' : 'Load Available Models'}
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {modelLoadError && (
+                <p className="text-sm text-destructive">{modelLoadError}</p>
+              )}
+
+              {hasLoadedModels && (
+                <p className="text-sm text-primary">
+                  ✓ Loaded {dynamicModels.length} models from API
+                </p>
+              )}
             </div>
+          </div>
+        )}
+
+        {/* Model Selection */}
+        {currentProvider && (
+          <div className="mb-8 animate-fade-in">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
+                3
+              </span>
+              Select Model
+              {hasLoadedModels && (
+                <span className="text-xs font-normal text-primary ml-2">
+                  (from API)
+                </span>
+              )}
+            </h2>
+
+            {modelsToDisplay.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Enter your API key and click "Load Available Models" to see available options.
+              </p>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                {modelsToDisplay.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => setSelectedModel(model.id)}
+                    className={`p-4 rounded-xl border text-left transition-all ${
+                      selectedModel === model.id
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                        : "border-border hover:border-primary/50 hover:bg-secondary/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm">{model.name}</span>
+                      {selectedModel === model.id && (
+                        <Check className="w-4 h-4 text-primary" />
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {model.description}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/60 font-mono mt-1 truncate">
+                      {model.id}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
