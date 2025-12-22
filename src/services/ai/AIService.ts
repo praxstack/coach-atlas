@@ -12,6 +12,7 @@ import type {
   StreamChunk,
 } from "../types";
 import { anthropicAdapter } from "./adapters/AnthropicAdapter";
+import { bedrockAdapter } from "./adapters/BedrockAdapter";
 import { googleAdapter } from "./adapters/GoogleAdapter";
 import { openAIAdapter } from "./adapters/OpenAIAdapter";
 import { selectContext } from "./ContextManager";
@@ -60,9 +61,7 @@ export class AIService implements IAIService {
         return googleAdapter.sendMessage(requestWithPrompt);
 
       case "bedrock":
-        throw new Error(
-          "AWS Bedrock requires server-side integration. Please use OpenAI, Anthropic, or Google."
-        );
+        return bedrockAdapter.sendMessage(requestWithPrompt);
 
       default:
         throw new Error(`Unknown provider: ${config.provider}`);
@@ -84,8 +83,7 @@ export class AIService implements IAIService {
         return googleAdapter.validateApiKey(apiKey);
 
       case "bedrock":
-        // Bedrock uses IAM, not API keys
-        return false;
+        return bedrockAdapter.validateApiKey(apiKey);
 
       default:
         return false;
@@ -169,9 +167,8 @@ export class AIService implements IAIService {
         break;
 
       case "bedrock":
-        throw new Error(
-          "AWS Bedrock streaming requires server-side integration."
-        );
+        yield* bedrockAdapter.streamMessage(request);
+        break;
 
       default:
         throw new Error(`Unknown provider: ${config.provider}`);

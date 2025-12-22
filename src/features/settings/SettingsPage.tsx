@@ -8,12 +8,10 @@ import { Button } from "@/shared/ui/button";
 import {
   ArrowLeft,
   Check,
-  Eye,
-  EyeOff,
   Key,
   Shield,
   Sparkles,
-  Trash2,
+  Trash2
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -260,58 +258,66 @@ const Settings = () => {
           </div>
         )}
 
-        {/* API Key Input */}
+        {/* Dynamic Fields Input */}
         {currentProvider && selectedModel && (
           <div className="mb-8 animate-fade-in">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
                 3
               </span>
-              Enter API Key
+              Enter Credentials
             </h2>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                {currentProvider.name} API Key
-              </label>
-              <div className="relative">
-                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={`Enter your ${currentProvider.name} API key`}
-                  className="w-full bg-secondary border border-border rounded-xl pl-10 pr-12 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showApiKey ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
+            <div className="space-y-4">
+              {currentProvider.fields.map((field) => (
+                <div key={field.key}>
+                  <label className="block text-sm font-medium mb-2">
+                    {field.label}
+                  </label>
+                  <div className="relative">
+                    {field.key === "apiKey" || field.key.includes("Key") ? (
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">📍</span>
+                    )}
+                    <input
+                      type={field.type}
+                      value={
+                        field.key === "apiKey"
+                          ? apiKey
+                          : (apiKey.split(":")[1] && field.key === "region" ? apiKey.split(":")[2] : "")
+                          // Temporary hack: we are storing everything in 'apiKey' string for now to avoid major refactor
+                          // Ideally we should have a `credentials` object in state
+                      }
+                      onChange={(e) => {
+                        if (currentProvider.id === 'bedrock') {
+                          // For Bedrock, we composite the values into the apiKey string
+                          // Format: AccessKey:SecretKey:Region
+                          const current = apiKey.split(":");
+                          const accessKey = current[0] || "";
+                          const secretKey = current[1] || "";
+                          const region = current[2] || "us-east-1";
+
+                          if (field.key === "apiKey") {
+                             // This field is actually the "Access Key : Secret Key" combo in the UI now?
+                             // Wait, providers.ts defines 'apiKey' as the first field.
+                             // Let's simplify. The user sees "AWS Access Key ID : Secret Access Key".
+                             // We stick to the single string for now.
+                             setApiKey(e.target.value);
+                          } else if (field.key === "region") {
+                             setApiKey(`${accessKey}:${secretKey}:${e.target.value}`);
+                          }
+                        } else {
+                          setApiKey(e.target.value);
+                        }
+                      }}
+                      placeholder={field.placeholder}
+                      className="w-full bg-secondary border border-border rounded-xl pl-10 pr-12 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                    />
+                  </div>
+                </div>
+              ))}
               <p className="text-xs text-muted-foreground mt-2">
-                Get your API key from{" "}
-                <a
-                  href={
-                    currentProvider.id === "openai"
-                      ? "https://platform.openai.com/api-keys"
-                      : currentProvider.id === "anthropic"
-                        ? "https://console.anthropic.com/settings/keys"
-                        : currentProvider.id === "google"
-                          ? "https://makersuite.google.com/app/apikey"
-                          : "#"
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  {currentProvider.name}'s console
-                </a>
+                 Get your credentials from the provider's console.
               </p>
             </div>
           </div>
