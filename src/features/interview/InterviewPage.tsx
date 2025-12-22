@@ -215,11 +215,41 @@ Do NOT:
         .map((m) => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content}`)
         .join("\n\n");
 
-      // Generate evaluation
-      const evaluation = await interviewService.generateEvaluation(session, chatHistory);
+      // Generate evaluation with timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Evaluation timed out after 60 seconds")), 60000);
+      });
+
+      const evaluation = await Promise.race([
+        interviewService.generateEvaluation(session, chatHistory),
+        timeoutPromise,
+      ]);
+
       setEvaluation(evaluation);
     } catch (error) {
-      toast.error(`Failed to generate evaluation: ${error}`);
+      console.error("Evaluation failed:", error);
+      toast.error(`Evaluation failed: ${error}. Creating fallback report.`);
+
+      // Create fallback evaluation so user isn't stuck
+      const fallbackEvaluation = {
+        overallScore: 3,
+        dimensions: {
+          problemSolving: 3,
+          coding: 3,
+          communication: 3,
+          verification: 3,
+          timeManagement: 3,
+        },
+        feedback: {
+          strengths: ["You attempted the problem"],
+          weaknesses: ["Evaluation could not be generated - please try again"],
+          actionItems: ["Practice more problems", "Review your approach"],
+          followUpQuestions: [],
+        },
+        generatedAt: Date.now(),
+        modelUsed: "fallback",
+      };
+      setEvaluation(fallbackEvaluation);
     } finally {
       setIsEvaluating(false);
     }
@@ -258,7 +288,7 @@ Do NOT:
     );
   }
 
-  // Submitted: Show loading
+  // Submitted: Show loading with cancel option
   if (status === "submitted") {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -267,9 +297,21 @@ Do NOT:
           <h2 className="text-xl font-semibold text-white mb-2">
             Evaluating Your Performance...
           </h2>
-          <p className="text-gray-400">
+          <p className="text-gray-400 mb-4">
             Our AI interviewer is analyzing your responses.
           </p>
+          <p className="text-gray-500 text-sm mb-4">
+            This may take up to 60 seconds...
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              cancel();
+              toast.info("Evaluation cancelled");
+            }}
+          >
+            Cancel & Return
+          </Button>
         </div>
       </div>
     );
