@@ -14,6 +14,7 @@ import type {
 import { anthropicAdapter } from "./adapters/AnthropicAdapter";
 import { googleAdapter } from "./adapters/GoogleAdapter";
 import { openAIAdapter } from "./adapters/OpenAIAdapter";
+import { selectContext } from "./ContextManager";
 
 /**
  * Coach Atlas System Prompt
@@ -93,7 +94,7 @@ export class AIService implements IAIService {
 
   /**
    * Convenience method: Send a simple chat message with history injection
-   * This is the main method ChatPage will use
+   * Uses ContextManager to fit within token limits
    */
   async chat(
     userMessage: string,
@@ -112,8 +113,11 @@ export class AIService implements IAIService {
       },
     ];
 
+    // Apply sliding window to fit within context limit
+    const contextMessages = selectContext(allMessages, config.model, SYSTEM_PROMPT);
+
     return this.sendMessage({
-      messages: allMessages,
+      messages: contextMessages,
       config,
       systemPrompt: SYSTEM_PROMPT,
     });
@@ -121,8 +125,8 @@ export class AIService implements IAIService {
 
   /**
    * Stream chat message with history injection
+   * Uses ContextManager to fit within token limits
    * Yields chunks as they arrive from the API
-   * This is the primary method for real-time UI updates
    */
   async *streamChat(
     userMessage: string,
@@ -141,8 +145,11 @@ export class AIService implements IAIService {
       },
     ];
 
+    // Apply sliding window to fit within context limit
+    const contextMessages = selectContext(allMessages, config.model, SYSTEM_PROMPT);
+
     const request: AIRequest = {
-      messages: allMessages,
+      messages: contextMessages,
       config,
       systemPrompt: SYSTEM_PROMPT,
     };
