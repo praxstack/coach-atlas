@@ -24,6 +24,7 @@ import {
   useInterview,
 } from "./context/InterviewContext";
 import { getInterviewService } from "./services/InterviewService";
+import { createProgressiveEvaluator, type ProgressiveEvaluator } from "./services/ProgressiveEvaluator";
 
 // ============================================
 // Inner Component (uses context)
@@ -61,6 +62,9 @@ function InterviewContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Progressive evaluator instance
+  const progressiveEvaluatorRef = useRef<ProgressiveEvaluator | null>(null);
 
   // Load config on mount
   useEffect(() => {
@@ -106,6 +110,10 @@ function InterviewContent() {
       // Create session
       const newSession = interviewService.createSession(interviewConfig, [problem]);
       confirmSetup(newSession);
+
+      // Initialize progressive evaluator for background evaluation
+      progressiveEvaluatorRef.current = createProgressiveEvaluator(aiService, config, problem);
+      console.log("[Interview] Progressive evaluator initialized for real-time evaluation");
 
       // Add initial interviewer message
       setMessages([
@@ -195,14 +203,19 @@ Do NOT:
 
       // Add assistant message
       setStreamingContent("");
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          content: fullContent,
-        },
-      ]);
+      const assistantMsg = {
+        id: `assistant-${Date.now()}`,
+        role: "assistant" as const,
+        content: fullContent,
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      // Record exchange for progressive evaluation (background, non-blocking)
+      if (progressiveEvaluatorRef.current) {
+        progressiveEvaluatorRef.current.onMessageExchange(userContent, fullContent).catch((err) => {
+          console.warn("[Interview] Background evaluation error (non-fatal):", err);
+        });
+      }
     } catch (error) {
       toast.error(`Error: ${error}`);
     } finally {
@@ -210,65 +223,87 @@ Do NOT:
     }
   };
 
-  // Handle interview submission
+  // Handle interview submission - Uses Progressive Evaluator for fast synthesis
   const handleSubmit = useCallback(async () => {
     if (!config || !session) return;
 
     submit();
     setIsEvaluating(true);
 
-    // Fallback evaluation
-    const fallbackEvaluation = {
-      overallScore: 3,
-      dimensions: {
-        problemSolving: 3,
-        coding: 3,
-        communication: 3,
-        verification: 3,
-        timeManagement: 3,
-      },
-      feedback: {
-        strengths: ["You completed the interview session"],
-        weaknesses: ["AI evaluation could not be generated"],
-        actionItems: ["Practice more problems", "Review your approach"],
-        followUpQuestions: [],
-      },
-      generatedAt: Date.now(),
-      modelUsed: "fallback",
-    };
+    console.log("[Interview] Starting final synthesis with Progressive Evaluator...");
 
     try {
-      const interviewService = getInterviewService(aiService, config);
+      // Use Progressive Evaluator for fast synthesis
+      if (progressiveEvaluatorRef.current) {
+        const state = progressiveEvaluatorRef.current.getState();
+        console.log("[Interview] Progressive state:", {
+          evaluationCount: state.evaluationCount,
+          observationCount: state.observations.length,
+          scores: state.scores,
+        });
 
-      // Build chat history - limit to last 10 messages to avoid token limits
-      const recentMessages = messages.slice(-10);
-      const chatHistory = recentMessages
-        .map((m) => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content.slice(0, 500)}...`)
-        .join("\n\n");
-
-      console.log("[Interview] Generating evaluation...", { messageCount: recentMessages.length });
-
-      // Generate evaluation with SHORT timeout (30 seconds)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.warn("[Interview] Evaluation timeout - aborting");
-        controller.abort();
-      }, 30000);
-
-      try {
-        const evaluation = await interviewService.generateEvaluation(session, chatHistory);
-        clearTimeout(timeoutId);
+        // Fast synthesis - uses pre-computed observations and scores
+        const evaluation = await progressiveEvaluatorRef.current.synthesizeFinalReport();
         setEvaluation(evaluation);
-        console.log("[Interview] Evaluation complete:", evaluation);
-      } catch (evalError) {
-        clearTimeout(timeoutId);
-        console.error("[Interview] Evaluation API error:", evalError);
-        throw evalError;
+        console.log("[Interview] Fast evaluation complete:", evaluation);
+      } else {
+        // Fallback to old approach if progressive evaluator not available
+        console.warn("[Interview] Progressive evaluator not available, using fallback");
+        const interviewService = getInterviewService(aiService, config);
+        const chatHistory = messages
+          .slice(-10)
+          .map((m) => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content.slice(0, 500)}`)
+          .join("\n\n");
+        const evaluation = await interviewService.generateEvaluation(session, chatHistory);
+        setEvaluation(evaluation);
       }
     } catch (error) {
       console.error("[Interview] Evaluation failed:", error);
-      toast.error("Evaluation timed out. Using fallback report.");
-      setEvaluation(fallbackEvaluation);
+      toast.error("Evaluation failed. Using fallback report.");
+
+      // Fallback from progressive evaluator state if available
+      if (progressiveEvaluatorRef.current) {
+        const fallbackEval = progressiveEvaluatorRef.current.getState();
+        setEvaluation({
+          overallScore: Math.round(
+            (fallbackEval.scores.problemSolving + fallbackEval.scores.coding + fallbackEval.scores.communication) / 3
+          ),
+          dimensions: {
+            problemSolving: Math.round(fallbackEval.scores.problemSolving),
+            coding: Math.round(fallbackEval.scores.coding),
+            communication: Math.round(fallbackEval.scores.communication),
+            verification: Math.round(fallbackEval.scores.verification),
+            timeManagement: Math.round(fallbackEval.scores.timeManagement),
+          },
+          feedback: {
+            strengths: fallbackEval.observations.filter((o) => o.type === "strength").map((o) => o.content).slice(0, 3),
+            weaknesses: fallbackEval.observations.filter((o) => o.type === "weakness").map((o) => o.content).slice(0, 3),
+            actionItems: ["Practice similar problems", "Review edge cases"],
+            followUpQuestions: [],
+          },
+          generatedAt: Date.now(),
+          modelUsed: "fallback-from-observations",
+        });
+      } else {
+        setEvaluation({
+          overallScore: 3,
+          dimensions: {
+            problemSolving: 3,
+            coding: 3,
+            communication: 3,
+            verification: 3,
+            timeManagement: 3,
+          },
+          feedback: {
+            strengths: ["You completed the interview"],
+            weaknesses: ["Evaluation could not be generated"],
+            actionItems: ["Practice more problems"],
+            followUpQuestions: [],
+          },
+          generatedAt: Date.now(),
+          modelUsed: "fallback",
+        });
+      }
     } finally {
       setIsEvaluating(false);
     }
