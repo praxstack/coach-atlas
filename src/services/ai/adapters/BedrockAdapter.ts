@@ -37,7 +37,6 @@ export class BedrockAdapter implements IAIService {
       merged.shift(); // Remove leading assistant message
     }
 
-    console.log('[Bedrock] Formatted messages:', merged.length, 'from', filtered.length);
     return merged;
   }
 

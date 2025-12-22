@@ -28,7 +28,6 @@ export async function fetchBedrockModels(
   const url = `https://bedrock.${region}.amazonaws.com/foundation-models`;
 
   try {
-    console.log('[ModelDiscovery] Fetching Bedrock models from:', url);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -49,7 +48,6 @@ export async function fetchBedrockModels(
     }
 
     const data = await response.json();
-    console.log('[ModelDiscovery] Bedrock response:', data);
 
     // Parse Bedrock model summaries
     const models: DiscoveredModel[] = (data.modelSummaries || [])
@@ -64,7 +62,6 @@ export async function fetchBedrockModels(
         description: `${m.providerName} model`,
       }));
 
-    console.log('[ModelDiscovery] Found', models.length, 'Bedrock models');
     return { success: true, models };
   } catch (error) {
     console.error('[ModelDiscovery] Bedrock fetch error:', error);
@@ -83,7 +80,6 @@ export async function fetchOpenAIModels(apiKey: string): Promise<ModelDiscoveryR
   const url = 'https://api.openai.com/v1/models';
 
   try {
-    console.log('[ModelDiscovery] Fetching OpenAI models');
 
     const response = await fetch(url, {
       method: 'GET',
@@ -123,7 +119,6 @@ export async function fetchOpenAIModels(apiKey: string): Promise<ModelDiscoveryR
         return aIdx - bIdx;
       });
 
-    console.log('[ModelDiscovery] Found', chatModels.length, 'OpenAI models');
     return { success: true, models: chatModels };
   } catch (error) {
     console.error('[ModelDiscovery] OpenAI fetch error:', error);
@@ -144,7 +139,6 @@ export async function fetchAnthropicModels(apiKey: string): Promise<ModelDiscove
   const url = 'https://api.anthropic.com/v1/messages';
 
   try {
-    console.log('[ModelDiscovery] Validating Anthropic API key');
 
     // Make a minimal request to validate key
     const response = await fetch(url, {
@@ -175,7 +169,6 @@ export async function fetchAnthropicModels(apiKey: string): Promise<ModelDiscove
       { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', provider: 'Anthropic', description: 'Fast (Legacy)' },
     ];
 
-    console.log('[ModelDiscovery] Anthropic key validated, returning known models');
     return { success: true, models };
   } catch (error) {
     console.error('[ModelDiscovery] Anthropic validation error:', error);
@@ -194,7 +187,6 @@ export async function fetchGoogleModels(apiKey: string): Promise<ModelDiscoveryR
   const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
 
   try {
-    console.log('[ModelDiscovery] Fetching Google models');
 
     const response = await fetch(url);
 
@@ -219,7 +211,6 @@ export async function fetchGoogleModels(apiKey: string): Promise<ModelDiscoveryR
         description: m.description || '',
       }));
 
-    console.log('[ModelDiscovery] Found', models.length, 'Google models');
     return { success: true, models };
   } catch (error) {
     console.error('[ModelDiscovery] Google fetch error:', error);

@@ -163,8 +163,8 @@ export function selectContext(
   const selectedCount = selectedMessages.length;
   const droppedCount = totalMessages - selectedCount;
 
-  if (droppedCount > 0) {
-    console.log(
+  if (droppedCount > 0 && import.meta.env.DEV) {
+    console.debug(
       `[ContextManager] Using ${selectedCount}/${totalMessages} messages ` +
       `(dropped ${droppedCount} oldest). Tokens: ~${usedTokens}/${availableTokens}`
     );
