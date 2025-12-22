@@ -125,12 +125,17 @@ export class AIService implements IAIService {
    * Stream chat message with history injection
    * Uses ContextManager to fit within token limits
    * Yields chunks as they arrive from the API
+   * @param customSystemPrompt - Optional custom system prompt for persona support
    */
   async *streamChat(
     userMessage: string,
     conversationHistory: Message[],
-    config: ProviderConfig
+    config: ProviderConfig,
+    customSystemPrompt?: string
   ): AsyncGenerator<StreamChunk> {
+    // Use custom system prompt if provided, otherwise default
+    const systemPrompt = customSystemPrompt || SYSTEM_PROMPT;
+
     // Build the full message list for history injection
     const allMessages: Message[] = [
       ...conversationHistory,
@@ -144,12 +149,12 @@ export class AIService implements IAIService {
     ];
 
     // Apply sliding window to fit within context limit
-    const contextMessages = selectContext(allMessages, config.model, SYSTEM_PROMPT);
+    const contextMessages = selectContext(allMessages, config.model, systemPrompt);
 
     const request: AIRequest = {
       messages: contextMessages,
       config,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
     };
 
     // Route to the appropriate adapter's stream method

@@ -4,6 +4,7 @@
  */
 import { useAIService, useStorageService } from "@/app/ServiceContext";
 import { MarkdownRenderer } from "@/lib/markdown-viewer";
+import { defaultPersona, getPersona, type PersonaId } from "@/services/personas";
 import { providers } from "@/services/providers";
 import type { Conversation, Message, ProviderConfig, ProviderId } from "@/services/types";
 import { Button } from "@/shared/ui/button";
@@ -43,8 +44,12 @@ const Chat = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string>(""); // Real-time streaming content
+  const [selectedPersona, setSelectedPersona] = useState<PersonaId>(defaultPersona);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Get current persona
+  const persona = getPersona(selectedPersona);
 
   // Initialize: Load config and conversation from IndexedDB
   const initialize = useCallback(async () => {
@@ -85,6 +90,12 @@ const Chat = () => {
 
       setConversation(conv);
 
+      // Load selected persona
+      const savedPersona = await storageService.getSetting("selectedPersona");
+      if (savedPersona) {
+        setSelectedPersona(savedPersona as PersonaId);
+      }
+
       // Load existing messages
       const storedMessages = await storageService.getMessages(conv.id);
 
@@ -98,19 +109,13 @@ const Chat = () => {
           }))
         );
       } else {
-        // First time: show welcome message
+        // First time: show welcome message based on persona
+        const currentPersona = getPersona((savedPersona as PersonaId) || defaultPersona);
         const welcomeMessage: Message = {
           id: "welcome",
           conversationId: conv.id,
           role: "assistant",
-          content: `I'm Coach Atlas, your technical interview mentor and tutorial creator.
-
-I help you through:
-• **Interview prep** (coding, system design, behavioral)
-• **Problem-solving** with guided discovery
-• **Comprehensive tutorials** on any technical topic
-
-What brings you here today?`,
+          content: currentPersona.welcomeMessage,
           timestamp: Date.now(),
         };
 
@@ -184,10 +189,10 @@ What brings you here today?`,
       // 3. Get full conversation history from IndexedDB (for history injection)
       const historyMessages = await storageService.getMessages(conversation.id);
 
-      // 4. Stream response from AIService
+      // 4. Stream response from AIService with persona system prompt
       let fullContent = "";
 
-      for await (const chunk of aiService.streamChat(userContent, historyMessages, config)) {
+      for await (const chunk of aiService.streamChat(userContent, historyMessages, config, persona.systemPrompt)) {
         if (chunk.done) break;
 
         fullContent += chunk.content;
@@ -411,11 +416,7 @@ What brings you here today?`,
             </Button>
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
-            {[
-              "TUTORIAL: Binary Search",
-              "Design a URL Shortener",
-              "Two Sum Problem",
-            ].map((suggestion) => (
+            {persona.suggestedPrompts.map((suggestion) => (
               <button
                 key={suggestion}
                 onClick={() => setInput(suggestion)}

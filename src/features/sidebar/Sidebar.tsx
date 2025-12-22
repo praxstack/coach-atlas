@@ -3,6 +3,7 @@
  * Lists all conversations with actions
  */
 import { useStorageService } from "@/app/ServiceContext";
+import { getAllPersonas, type PersonaId } from "@/services/personas";
 import type { Conversation } from "@/services/types";
 import { Button } from "@/shared/ui/button";
 import {
@@ -30,6 +31,10 @@ export function Sidebar({ onClose }: SidebarProps) {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedPersona, setSelectedPersona] = useState<PersonaId>("coach-atlas");
+  const [showPersonaSelector, setShowPersonaSelector] = useState(false);
+
+  const personas = getAllPersonas();
 
   // Load conversations
   const loadConversations = useCallback(async () => {
@@ -46,6 +51,30 @@ export function Sidebar({ onClose }: SidebarProps) {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Load saved persona preference
+  useEffect(() => {
+    const loadPersona = async () => {
+      try {
+        const saved = await storageService.getSetting("selectedPersona");
+        if (saved) setSelectedPersona(saved as PersonaId);
+      } catch (err) {
+        console.error("Failed to load persona:", err);
+      }
+    };
+    loadPersona();
+  }, [storageService]);
+
+  // Save persona preference
+  const handlePersonaChange = async (personaId: PersonaId) => {
+    setSelectedPersona(personaId);
+    setShowPersonaSelector(false);
+    try {
+      await storageService.saveSetting("selectedPersona", personaId);
+    } catch (err) {
+      console.error("Failed to save persona:", err);
+    }
+  };
 
   // Create new conversation
   const handleNewChat = async () => {
@@ -109,10 +138,50 @@ export function Sidebar({ onClose }: SidebarProps) {
     <div className="h-full flex flex-col bg-card border-r border-border">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <Sparkles className="w-5 h-5 text-primary" />
           <span className="font-semibold text-lg">Coach Atlas</span>
         </div>
+
+        {/* Persona Selector */}
+        <div className="mb-3 relative">
+          <button
+            onClick={() => setShowPersonaSelector(!showPersonaSelector)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors text-sm"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{personas.find(p => p.id === selectedPersona)?.icon}</span>
+              <div className="text-left">
+                <div className="font-medium">{personas.find(p => p.id === selectedPersona)?.name}</div>
+                <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                  {personas.find(p => p.id === selectedPersona)?.description}
+                </div>
+              </div>
+            </div>
+            <span className="text-muted-foreground text-xs">▼</span>
+          </button>
+
+          {showPersonaSelector && (
+            <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+              {personas.map((persona) => (
+                <button
+                  key={persona.id}
+                  onClick={() => handlePersonaChange(persona.id)}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 hover:bg-secondary/50 transition-colors text-left ${
+                    selectedPersona === persona.id ? "bg-primary/10" : ""
+                  }`}
+                >
+                  <span className="text-lg">{persona.icon}</span>
+                  <div>
+                    <div className="font-medium text-sm">{persona.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{persona.description}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <Button
           onClick={handleNewChat}
           className="w-full justify-start gap-2"
@@ -186,30 +255,58 @@ export function Sidebar({ onClose }: SidebarProps) {
         </div>
 
         {/* Mini Footer */}
-        <div className="px-3 py-2 border-t border-border/50 bg-card/50">
-          <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1">
-              Made with <Heart className="w-2.5 h-2.5 text-red-500 fill-red-500" />
-            </span>
-            <span>by</span>
-            <a
-              href="https://github.com/PrakharMNNIT"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              <Github className="w-3 h-3" />
-            </a>
-            <span className="text-border">|</span>
-            <a
-              href="https://ko-fi.com/praxlannister"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 hover:text-primary transition-colors"
-            >
-              <Coffee className="w-3 h-3" />
-              <span>Support</span>
-            </a>
+        <div className="px-3 py-3 border-t border-border/50 bg-card/50">
+          <div className="flex flex-col items-center gap-2 text-[10px] text-muted-foreground">
+            {/* Made with love */}
+            <div className="flex items-center gap-1">
+              Made with <Heart className="w-2.5 h-2.5 text-red-500 fill-red-500" /> by
+              <span className="font-medium text-foreground">Prax Lannister</span>
+            </div>
+
+            {/* Social links */}
+            <div className="flex items-center gap-2">
+              <span>Follow me on</span>
+              <a
+                href="https://github.com/PrakharMNNIT"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                <Github className="w-3 h-3" />
+                <span>GitHub</span>
+              </a>
+              <span>&</span>
+              <a
+                href="https://x.com/ByteByByteSrSDE"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                <span>𝕏</span>
+              </a>
+            </div>
+
+            {/* Support links */}
+            <div className="flex items-center gap-2">
+              <a
+                href="https://ko-fi.com/praxlannister"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+              >
+                <Coffee className="w-3 h-3" />
+                <span>Support via Ko-fi</span>
+              </a>
+              <span className="text-border">|</span>
+              <a
+                href="https://razorpay.me/@prakharshekharparthasarthi"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-orange-500 transition-colors"
+              >
+                <span>🇮🇳 UPI</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
