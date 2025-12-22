@@ -48,8 +48,7 @@ export const providers: ProviderConfig[] = [
       { id: 'mistral.mistral-large-2407-v1:0', name: 'Mistral Large', description: 'Mistral flagship' },
     ],
     fields: [
-      { key: 'apiKey', label: 'AWS Access Key ID : Secret Access Key', placeholder: 'AccessKeyId:SecretAccessKey', type: 'password' },
-      { key: 'region', label: 'AWS Region', placeholder: 'us-east-1', type: 'text' },
+      { key: 'apiKey', label: 'AWS Credentials', placeholder: 'AccessKeyId:SecretAccessKey:Region (e.g. AKIA...:secret:us-east-1)', type: 'password' },
     ],
   },
   {

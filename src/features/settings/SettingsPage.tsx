@@ -258,67 +258,43 @@ const Settings = () => {
           </div>
         )}
 
-        {/* Dynamic Fields Input */}
+        {/* API Key Input */}
         {currentProvider && selectedModel && (
           <div className="mb-8 animate-fade-in">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
                 3
               </span>
-              Enter Credentials
+              Enter API Key
             </h2>
             <div className="space-y-4">
-              {currentProvider.fields.map((field) => (
-                <div key={field.key}>
-                  <label className="block text-sm font-medium mb-2">
-                    {field.label}
-                  </label>
-                  <div className="relative">
-                    {field.key === "apiKey" || field.key.includes("Key") ? (
-                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">📍</span>
-                    )}
-                    <input
-                      type={field.type}
-                      value={
-                        field.key === "apiKey"
-                          ? apiKey
-                          : (apiKey.split(":")[1] && field.key === "region" ? apiKey.split(":")[2] : "")
-                          // Temporary hack: we are storing everything in 'apiKey' string for now to avoid major refactor
-                          // Ideally we should have a `credentials` object in state
-                      }
-                      onChange={(e) => {
-                        if (currentProvider.id === 'bedrock') {
-                          // For Bedrock, we composite the values into the apiKey string
-                          // Format: AccessKey:SecretKey:Region
-                          const current = apiKey.split(":");
-                          const accessKey = current[0] || "";
-                          const secretKey = current[1] || "";
-                          const region = current[2] || "us-east-1";
-
-                          if (field.key === "apiKey") {
-                             // This field is actually the "Access Key : Secret Key" combo in the UI now?
-                             // Wait, providers.ts defines 'apiKey' as the first field.
-                             // Let's simplify. The user sees "AWS Access Key ID : Secret Access Key".
-                             // We stick to the single string for now.
-                             setApiKey(e.target.value);
-                          } else if (field.key === "region") {
-                             setApiKey(`${accessKey}:${secretKey}:${e.target.value}`);
-                          }
-                        } else {
-                          setApiKey(e.target.value);
-                        }
-                      }}
-                      placeholder={field.placeholder}
-                      className="w-full bg-secondary border border-border rounded-xl pl-10 pr-12 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-                    />
-                  </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  {currentProvider.fields[0]?.label || "API Key"}
+                </label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={currentProvider.fields[0]?.placeholder || "Enter your API key"}
+                    className="w-full bg-secondary border border-border rounded-xl pl-10 pr-12 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                  >
+                    {showApiKey ? "Hide" : "Show"}
+                  </button>
                 </div>
-              ))}
-              <p className="text-xs text-muted-foreground mt-2">
-                 Get your credentials from the provider's console.
-              </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {currentProvider.id === "bedrock"
+                    ? "Format: AccessKeyId:SecretAccessKey:Region (e.g. AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY:us-east-1)"
+                    : "Get your API key from the provider's console."}
+                </p>
+              </div>
             </div>
           </div>
         )}
