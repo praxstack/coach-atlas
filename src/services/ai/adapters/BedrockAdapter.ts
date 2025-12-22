@@ -185,32 +185,68 @@ export class BedrockAdapter implements IAIService {
       }
 
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = new Uint8Array(0);
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[Bedrock] Stream complete');
+          break;
+        }
 
-        buffer += decoder.decode(value, { stream: true });
+        // Append to buffer
+        const newBuffer = new Uint8Array(buffer.length + value.length);
+        newBuffer.set(buffer);
+        newBuffer.set(value, buffer.length);
+        buffer = newBuffer;
 
-        // Parse SSE events
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        // Try to parse Amazon EventStream messages
+        // Each message has: prelude (8 bytes) + headers + payload + message CRC (4 bytes)
+        while (buffer.length >= 16) {
+          // Read total length from first 4 bytes (big-endian)
+          const totalLen = (buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3];
 
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
+          if (buffer.length < totalLen) {
+            // Not enough data yet
+            break;
+          }
+
+          // Extract message
+          const message = buffer.slice(0, totalLen);
+          buffer = buffer.slice(totalLen);
+
+          // Skip prelude (8 bytes) and find headers length
+          const headersLen = (message[4] << 24) | (message[5] << 16) | (message[6] << 8) | message[7];
+
+          // Payload starts after prelude (8) + prelude CRC (4) + headers (headersLen)
+          const payloadStart = 12 + headersLen;
+          const payloadEnd = totalLen - 4; // Exclude message CRC
+
+          if (payloadEnd > payloadStart) {
+            const payload = message.slice(payloadStart, payloadEnd);
+            const payloadStr = decoder.decode(payload);
+
+            console.log('[Bedrock] Chunk payload:', payloadStr.substring(0, 200));
+
             try {
-              const data = JSON.parse(line.slice(5).trim());
+              const data = JSON.parse(payloadStr);
 
-              if (data.type === "content_block_delta" && data.delta?.text) {
+              // Handle different event types
+              if (data.type === 'content_block_delta' && data.delta?.text) {
                 yield { content: data.delta.text, done: false };
-              }
-
-              if (data.type === "message_stop") {
-                yield { content: "", done: true };
+              } else if (data.type === 'message_delta') {
+                // Final message with stop reason
+                yield { content: '', done: true };
+              } else if (data.bytes) {
+                // Base64 encoded chunk (alternative format)
+                const decodedBytes = atob(data.bytes);
+                const chunkData = JSON.parse(decodedBytes);
+                if (chunkData.type === 'content_block_delta' && chunkData.delta?.text) {
+                  yield { content: chunkData.delta.text, done: false };
+                }
               }
             } catch {
-              // Ignore parse errors for partial data
+              // Might be partial JSON, skip
             }
           }
         }
