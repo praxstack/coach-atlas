@@ -158,19 +158,29 @@ function InterviewContent() {
 
       // Stream response
       let fullContent = "";
+      const messageCount = messages.length;
       const interviewerPrompt = `You are a senior software engineer conducting a technical interview. ${problemContext}
+
+**CONVERSATION CONTEXT:** This is message #${messageCount + 1} in this interview.
 
 Your role:
 - Guide the candidate using the Socratic method (ask leading questions)
 - Point out issues in their approach without giving solutions
 - Ask about time/space complexity
 - Test edge cases they might miss
-- Keep responses concise and focused
+- Keep responses CONCISE (2-4 paragraphs max)
+
+**INTERVIEW FLOW GUIDELINES:**
+- After 3-4 back-and-forth exchanges where the candidate shows understanding, acknowledge their solution
+- If the candidate has provided a working solution with correct complexity analysis, say something like: "Great job! You've demonstrated a solid understanding of this problem. Click the **Finish** button when you're ready to see your evaluation."
+- If the candidate asks to move on or says they're done, acknowledge and suggest clicking Finish
+- Don't keep drilling infinitely - real interviews have time limits
 
 Do NOT:
-- Give away the solution
-- Write complete code for them
-- Be overly positive if they're off track`;
+- Give away the solution directly
+- Write complete code for them (unless they're completely stuck)
+- Keep asking endless follow-up questions after a good solution
+- Be overly critical if they've solved it correctly`;
 
       for await (const chunk of aiService.streamChat(
         userContent,
@@ -383,15 +393,11 @@ Do NOT:
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-3 ${
                       message.role === "user"
-                        ? "bg-blue-600 text-white rounded-br-md"
+                        ? "bg-blue-600 rounded-br-md [&_.markdown-body]:text-white [&_.markdown-body_code]:bg-blue-500/50 [&_.markdown-body_pre]:bg-blue-700/50 [&_.markdown-body_pre]:border-blue-500/30"
                         : "bg-gray-800 text-gray-100 rounded-bl-md"
                     }`}
                   >
-                    {message.role === "assistant" ? (
-                      <MarkdownRenderer content={message.content} className="text-sm" />
-                    ) : (
-                      <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-                    )}
+                    <MarkdownRenderer content={message.content} className="text-sm" />
                   </div>
                 </div>
               ))}
