@@ -14,6 +14,7 @@ import {
   Plus,
   Settings,
   Sparkles,
+  Target,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -189,6 +190,18 @@ export function Sidebar({ onClose }: SidebarProps) {
         >
           <Plus className="w-4 h-4" />
           New Chat
+        </Button>
+
+        {/* Mock Interview Button */}
+        <Button
+          onClick={() => {
+            navigate("/interview");
+            onClose?.();
+          }}
+          className="w-full justify-start gap-2 mt-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0"
+        >
+          <Target className="w-4 h-4" />
+          Mock Interview
         </Button>
       </div>
 

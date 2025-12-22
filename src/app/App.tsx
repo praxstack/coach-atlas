@@ -1,4 +1,5 @@
 import Chat from "@/features/chat/ChatPage";
+import InterviewPage from "@/features/interview/InterviewPage";
 import Index from "@/features/landing/IndexPage";
 import Settings from "@/features/settings/SettingsPage";
 import { webViewBridge } from "@/services/bridge/WebViewBridge";
@@ -52,6 +53,9 @@ const App = () => (
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/chat/:conversationId" element={<Chat />} />
               </Route>
+
+              {/* Interview mode - standalone (no sidebar) */}
+              <Route path="/interview" element={<InterviewPage />} />
 
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
