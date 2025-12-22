@@ -13,7 +13,12 @@ export {
 
 // Components
 export { InterviewLayout, InterviewLayoutMobile } from "./components/InterviewLayout";
+export { InterviewSetupModal } from "./components/InterviewSetupModal";
+export { ProblemPanel, ProblemPanelSkeleton } from "./components/ProblemPanel";
 export { TimerDisplay, TimerDisplayCompact } from "./components/TimerDisplay";
+
+// Services
+export { getInterviewService, InterviewService } from "./services/InterviewService";
 
 // Hooks
 export { useTimer } from "./hooks/useTimer";
