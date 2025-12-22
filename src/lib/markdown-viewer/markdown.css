@@ -420,3 +420,163 @@
 .markdown-body .katex {
   font-size: 1.1em;
 }
+
+/* ============================================
+   Guided Discovery: HINT Blocks
+   ============================================ */
+
+.markdown-body .markdown-alert-hint {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+  border-left-color: #60a5fa;
+  position: relative;
+}
+
+.markdown-body .markdown-alert-hint .markdown-alert-title {
+  color: #60a5fa;
+}
+
+.markdown-body .markdown-alert-hint .hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.markdown-body .markdown-alert-hint .hint-header .markdown-alert-title {
+  margin-bottom: 0;
+}
+
+.markdown-body .markdown-alert-hint .toggle-hint-btn {
+  background: rgba(96, 165, 250, 0.2);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: #60a5fa;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.markdown-body .markdown-alert-hint .toggle-hint-btn:hover {
+  background: rgba(96, 165, 250, 0.3);
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.markdown-body .markdown-alert-hint .toggle-icon {
+  display: inline-block;
+  transition: transform 0.2s;
+}
+
+.markdown-body .markdown-alert-hint .hint-content {
+  margin-top: 12px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.markdown-body .markdown-alert-hint[data-expanded="true"] .hint-content {
+  max-height: 2000px;
+  opacity: 1;
+}
+
+.markdown-body .markdown-alert-hint[data-expanded="false"] .hint-content {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
+/* ============================================
+   Guided Discovery: SOLUTION Blocks (Spoiler)
+   ============================================ */
+
+.markdown-body .markdown-alert-solution {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(74, 222, 128, 0.05) 100%);
+  border-left-color: #22c55e;
+  position: relative;
+}
+
+.markdown-body .markdown-alert-solution .markdown-alert-title {
+  color: #22c55e;
+}
+
+.markdown-body .markdown-alert-solution .solution-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.markdown-body .markdown-alert-solution .solution-header .markdown-alert-title {
+  margin-bottom: 0;
+}
+
+.markdown-body .markdown-alert-solution .reveal-btn {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);
+}
+
+.markdown-body .markdown-alert-solution .reveal-btn:hover {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(34, 197, 94, 0.4);
+}
+
+.markdown-body .markdown-alert-solution .reveal-btn:active {
+  transform: translateY(0);
+}
+
+.markdown-body .markdown-alert-solution .solution-content {
+  margin-top: 12px;
+  position: relative;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+/* Hidden state (blurred) */
+.markdown-body .markdown-alert-solution[data-revealed="false"] .solution-content {
+  filter: blur(6px);
+  opacity: 0.6;
+  user-select: none;
+  pointer-events: none;
+}
+
+.markdown-body .markdown-alert-solution[data-revealed="false"] .solution-content::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent, rgba(22, 27, 34, 0.8));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Revealed state */
+.markdown-body .markdown-alert-solution[data-revealed="true"] .solution-content {
+  filter: none;
+  opacity: 1;
+  user-select: text;
+  pointer-events: auto;
+}
+
+.markdown-body .markdown-alert-solution[data-revealed="true"] .reveal-btn {
+  background: #374151;
+  box-shadow: none;
+}
+
+.markdown-body .markdown-alert-solution[data-revealed="true"] .reveal-btn:hover {
+  background: #4b5563;
+}
+
+/* Accessibility: Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+
+  .markdown-body .markdown-alert-hint .hint-content,
+  .markdown-body .markdown-alert-hint .toggle-icon,
+  .markdown-body .markdown-alert-solution .solution-content,
+  .markdown-body .markdown-alert-solution .reveal-btn {
+    transition: none;
+  }
+}

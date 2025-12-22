@@ -45,8 +45,8 @@ import "./markdown.css";
 // ============================================
 
 /**
- * GitHub-style Alerts Extension
- * Supports: [!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION]
+ * GitHub-style Alerts Extension (Extended for Guided Discovery)
+ * Supports: [!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION], [!HINT], [!SOLUTION]
  */
 const alertExtension: TokenizerAndRendererExtension = {
   name: "alert",
@@ -55,7 +55,7 @@ const alertExtension: TokenizerAndRendererExtension = {
     return src.match(/^>\s*\[!/)?.index;
   },
   tokenizer(src: string) {
-    const rule = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\n((?:>.*(?:\n|$))*)/i;
+    const rule = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|HINT|SOLUTION)\]\n((?:>.*(?:\n|$))*)/i;
     const match = rule.exec(src);
     if (match) {
       const type = match[1].toLowerCase();
@@ -80,6 +80,8 @@ const alertExtension: TokenizerAndRendererExtension = {
       important: "❗",
       warning: "⚠️",
       caution: "🔴",
+      hint: "🔍",
+      solution: "✅",
     };
     const alertToken = token as Tokens.Generic & { alertType: string; content: string };
     const alertType = alertToken.alertType;
@@ -87,6 +89,32 @@ const alertExtension: TokenizerAndRendererExtension = {
     const icon = icons[alertType] || "📌";
     const title = alertType.charAt(0).toUpperCase() + alertType.slice(1);
     const parsedContent = marked.parse(content) as string;
+
+    // Special handling for SOLUTION blocks (collapsible/blurred)
+    if (alertType === "solution") {
+      return `<div class="markdown-alert markdown-alert-solution" data-revealed="false">
+        <div class="solution-header">
+          <p class="markdown-alert-title">${icon} ${title}</p>
+          <button class="reveal-btn" aria-label="Reveal solution">
+            <span class="reveal-text">Reveal</span>
+          </button>
+        </div>
+        <div class="solution-content markdown-alert-content">${parsedContent}</div>
+      </div>`;
+    }
+
+    // Special handling for HINT blocks (collapsible)
+    if (alertType === "hint") {
+      return `<div class="markdown-alert markdown-alert-hint" data-expanded="true">
+        <div class="hint-header">
+          <p class="markdown-alert-title">${icon} ${title}</p>
+          <button class="toggle-hint-btn" aria-label="Toggle hint">
+            <span class="toggle-icon">▼</span>
+          </button>
+        </div>
+        <div class="hint-content markdown-alert-content">${parsedContent}</div>
+      </div>`;
+    }
 
     return `<div class="markdown-alert markdown-alert-${alertType}">
       <p class="markdown-alert-title">${icon} ${title}</p>
@@ -181,6 +209,57 @@ async function renderMermaidDiagrams(container: HTMLElement) {
 }
 
 // ============================================
+// Interactive Blocks (HINT & SOLUTION)
+// ============================================
+
+/**
+ * Initialize interactive elements for HINT and SOLUTION blocks
+ * - HINT: Toggle expand/collapse
+ * - SOLUTION: Reveal hidden content
+ */
+function initializeInteractiveBlocks(container: HTMLElement) {
+  // Initialize SOLUTION reveal buttons
+  const solutionBlocks = container.querySelectorAll(".markdown-alert-solution");
+  solutionBlocks.forEach((block) => {
+    const revealBtn = block.querySelector(".reveal-btn");
+    const content = block.querySelector(".solution-content");
+    const revealText = block.querySelector(".reveal-text");
+
+    if (revealBtn && content && revealText) {
+      // Skip if already initialized
+      if (revealBtn.hasAttribute("data-initialized")) return;
+      revealBtn.setAttribute("data-initialized", "true");
+
+      revealBtn.addEventListener("click", () => {
+        const isRevealed = block.getAttribute("data-revealed") === "true";
+        block.setAttribute("data-revealed", isRevealed ? "false" : "true");
+        revealText.textContent = isRevealed ? "Reveal" : "Hide";
+      });
+    }
+  });
+
+  // Initialize HINT toggle buttons
+  const hintBlocks = container.querySelectorAll(".markdown-alert-hint");
+  hintBlocks.forEach((block) => {
+    const toggleBtn = block.querySelector(".toggle-hint-btn");
+    const content = block.querySelector(".hint-content");
+    const toggleIcon = block.querySelector(".toggle-icon");
+
+    if (toggleBtn && content && toggleIcon) {
+      // Skip if already initialized
+      if (toggleBtn.hasAttribute("data-initialized")) return;
+      toggleBtn.setAttribute("data-initialized", "true");
+
+      toggleBtn.addEventListener("click", () => {
+        const isExpanded = block.getAttribute("data-expanded") === "true";
+        block.setAttribute("data-expanded", isExpanded ? "false" : "true");
+        toggleIcon.textContent = isExpanded ? "▶" : "▼";
+      });
+    }
+  });
+}
+
+// ============================================
 // Configure Marked
 // ============================================
 
@@ -262,6 +341,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
     // 5. Render Mermaid diagrams (async)
     renderMermaidDiagrams(containerRef.current);
+
+    // 6. Initialize interactive elements (HINT toggle, SOLUTION reveal)
+    initializeInteractiveBlocks(containerRef.current);
   }, [content]);
 
   return <div ref={containerRef} className={`markdown-body ${className}`} />;
