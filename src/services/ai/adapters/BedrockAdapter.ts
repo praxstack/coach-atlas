@@ -1,94 +1,66 @@
-import {
-  BedrockRuntimeClient,
-  InvokeModelCommand,
-  InvokeModelWithResponseStreamCommand,
-} from "@aws-sdk/client-bedrock-runtime";
+/**
+ * Bedrock Adapter - Uses Bearer Token Authentication
+ * Compatible with Bedrock API Keys (not AWS SDK credentials)
+ */
 import type { AIRequest, AIResponse, IAIService, Message, StreamChunk } from "../../types";
 
 export class BedrockAdapter implements IAIService {
-  private getClient(apiKey: string): BedrockRuntimeClient {
-    // Try to decode Bedrock API Key format (base64 encoded credentials)
-    // Format: base64(BedrockAPIKey-{region}-{timestamp}:{accessKeyId}:{secretAccessKey})
+  private parseApiKey(apiKey: string): { token: string; region: string } {
+    // Try to extract region from base64 encoded key
     try {
       const decoded = atob(apiKey);
-
-      // Check if it's a Bedrock API Key format
-      if (decoded.startsWith('BedrockAPIKey-')) {
-        // Format: BedrockAPIKey-{region}-{timestamp}:{accessKeyId}:{secretAccessKey}
-        const parts = decoded.split(':');
-        if (parts.length >= 3) {
-          const headerParts = parts[0].split('-');
-          const region = headerParts[1] || 'us-east-1';
-          const accessKeyId = parts[1];
-          const secretAccessKey = parts.slice(2).join(':'); // Handle colons in secret
-
-          return new BedrockRuntimeClient({
-            region,
-            credentials: {
-              accessKeyId,
-              secretAccessKey,
-            },
-          });
-        }
-      }
-
-      // Fallback: Try simple AccessKey:SecretKey:Region format
-      const simpleParts = apiKey.split(':');
-      if (simpleParts.length >= 2) {
-        const [accessKeyId, secretAccessKey, region] = simpleParts;
-        return new BedrockRuntimeClient({
-          region: region || 'us-east-1',
-          credentials: {
-            accessKeyId,
-            secretAccessKey,
-          },
-        });
+      // Format: BedrockAPIKey-{region}-{timestamp}:...
+      const match = decoded.match(/BedrockAPIKey-([a-z0-9-]+)-/);
+      if (match) {
+        return { token: apiKey, region: match[1] };
       }
     } catch {
-      // Not base64 encoded, treat as region for environment credentials
+      // Not base64, use as-is
     }
 
-    // Fallback: Use as region with environment credentials
-    return new BedrockRuntimeClient({
-      region: apiKey || "us-east-1",
-    });
+    // Default region
+    return { token: apiKey, region: 'us-east-1' };
   }
 
   private formatMessages(messages: Message[], systemPrompt?: string) {
-    // Bedrock Claude Messages API format
-    // System prompt is top-level (if model supports it) or prepended
-    // For Claude 3, it's a top-level parameter, but here we construct the body manually.
-
-    const formattedMessages = messages.map(msg => ({
+    const formatted = messages.map(msg => ({
       role: msg.role === "assistant" ? "assistant" : "user",
       content: [{ type: "text", text: msg.content }]
     }));
 
-    return formattedMessages;
+    return formatted;
   }
 
   async sendMessage(request: AIRequest): Promise<AIResponse> {
     const { config, messages, systemPrompt } = request;
-    const client = this.getClient(config.apiKey);
+    const { token, region } = this.parseApiKey(config.apiKey);
 
-    const body = {
+    const body = JSON.stringify({
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 4096,
       system: systemPrompt ? [{ type: "text", text: systemPrompt }] : undefined,
       messages: this.formatMessages(messages),
-    };
-
-    const command = new InvokeModelCommand({
-      modelId: config.model,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify(body),
     });
 
+    const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${config.model}/invoke`;
+
     try {
-      const response = await client.send(command);
-      const responseBody = new TextDecoder().decode(response.body);
-      const json = JSON.parse(responseBody);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Bedrock API Error (${response.status}): ${errorText}`);
+      }
+
+      const json = await response.json();
 
       return {
         content: json.content?.[0]?.text || "",
@@ -107,38 +79,66 @@ export class BedrockAdapter implements IAIService {
 
   async *streamMessage(request: AIRequest): AsyncGenerator<StreamChunk> {
     const { config, messages, systemPrompt } = request;
-    const client = this.getClient(config.apiKey);
+    const { token, region } = this.parseApiKey(config.apiKey);
 
-    const body = {
+    const body = JSON.stringify({
       anthropic_version: "bedrock-2023-05-31",
       max_tokens: 4096,
       system: systemPrompt ? [{ type: "text", text: systemPrompt }] : undefined,
       messages: this.formatMessages(messages),
-    };
-
-    const command = new InvokeModelWithResponseStreamCommand({
-      modelId: config.model,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify(body),
     });
 
+    const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${config.model}/invoke-with-response-stream`;
+
     try {
-      const response = await client.send(command);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body,
+      });
 
-      if (!response.body) return;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Bedrock Stream Error (${response.status}): ${errorText}`);
+      }
 
-      for await (const chunk of response.body) {
-        if (chunk.chunk && chunk.chunk.bytes) {
-          const decode = new TextDecoder().decode(chunk.chunk.bytes);
-          const json = JSON.parse(decode);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
 
-          if (json.type === "content_block_delta" && json.delta?.text) {
-            yield { content: json.delta.text, done: false };
-          }
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-          if (json.type === "message_stop") {
-             yield { content: "", done: true };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            try {
+              const data = JSON.parse(line.slice(5).trim());
+
+              if (data.type === "content_block_delta" && data.delta?.text) {
+                yield { content: data.delta.text, done: false };
+              }
+
+              if (data.type === "message_stop") {
+                yield { content: "", done: true };
+              }
+            } catch {
+              // Ignore parse errors for partial data
+            }
           }
         }
       }
@@ -149,7 +149,6 @@ export class BedrockAdapter implements IAIService {
   }
 
   async validateApiKey(apiKey: string): Promise<boolean> {
-    // apiKey is just the region - any non-empty string is valid
     return apiKey.trim().length > 0;
   }
 }
