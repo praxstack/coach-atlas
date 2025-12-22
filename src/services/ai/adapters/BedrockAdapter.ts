@@ -1,39 +1,39 @@
 /**
  * Bedrock Adapter - Uses Bearer Token Authentication
- * Compatible with Bedrock API Keys (not AWS SDK credentials)
+ * Endpoint: bedrock-runtime.{region}.amazonaws.com/model/{model}/invoke
+ * Auth: Authorization: Bearer {apiKey}
  */
 import type { AIRequest, AIResponse, IAIService, Message, StreamChunk } from "../../types";
 
 export class BedrockAdapter implements IAIService {
-  private getRegion(config: { apiKey: string; region?: string }): string {
-    // Use explicit region from config
-    if (config.region && config.region.trim()) {
-      return config.region.trim();
-    }
-    return 'us-east-1';
+  private getRegion(config: { region?: string }): string {
+    return config.region?.trim() || 'us-east-1';
   }
 
-  private formatMessages(messages: Message[], systemPrompt?: string) {
-    const formatted = messages.map(msg => ({
-      role: msg.role === "assistant" ? "assistant" : "user",
-      content: [{ type: "text", text: msg.content }]
-    }));
-
-    return formatted;
+  private formatMessages(messages: Message[]) {
+    return messages
+      .filter(msg => msg.role !== 'system')
+      .map(msg => ({
+        role: msg.role === "assistant" ? "assistant" : "user",
+        content: msg.content
+      }));
   }
 
   async sendMessage(request: AIRequest): Promise<AIResponse> {
     const { config, messages, systemPrompt } = request;
     const region = this.getRegion(config);
+    const modelId = config.model;
 
-    const body = JSON.stringify({
-      anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 4096,
-      system: systemPrompt ? [{ type: "text", text: systemPrompt }] : undefined,
+    // Build request body for Anthropic Claude models
+    const requestBody = {
       messages: this.formatMessages(messages),
-    });
+      max_tokens: 4096,
+      temperature: 0.7,
+      anthropic_version: 'bedrock-2023-05-31',
+      ...(systemPrompt && { system: systemPrompt }),
+    };
 
-    const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${config.model}/invoke`;
+    const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
 
     try {
       const response = await fetch(url, {
@@ -43,19 +43,31 @@ export class BedrockAdapter implements IAIService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body,
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Bedrock API Error (${response.status}): ${errorText}`);
+
+        if (response.status === 401) {
+          throw new Error('Invalid API key - Authentication failed');
+        } else if (response.status === 403) {
+          throw new Error(`Access denied - Request model access in AWS Console for: ${modelId}`);
+        } else if (response.status === 404) {
+          throw new Error(`Model not found or not available in region: ${region}`);
+        } else {
+          throw new Error(`Bedrock Error (${response.status}): ${errorText}`);
+        }
       }
 
       const json = await response.json();
 
+      // Parse Claude response
+      const responseText = json.content?.[0]?.text || '';
+
       return {
-        content: json.content?.[0]?.text || "",
-        model: config.model,
+        content: responseText,
+        model: modelId,
         usage: {
           promptTokens: json.usage?.input_tokens || 0,
           completionTokens: json.usage?.output_tokens || 0,
@@ -63,23 +75,30 @@ export class BedrockAdapter implements IAIService {
         },
       };
     } catch (error) {
-      console.error("Bedrock API Error:", error);
-      throw error;
+      // Don't log the API key!
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Bedrock API request failed');
     }
   }
 
   async *streamMessage(request: AIRequest): AsyncGenerator<StreamChunk> {
     const { config, messages, systemPrompt } = request;
     const region = this.getRegion(config);
+    const modelId = config.model;
 
-    const body = JSON.stringify({
-      anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 4096,
-      system: systemPrompt ? [{ type: "text", text: systemPrompt }] : undefined,
+    // Build request body for Anthropic Claude models
+    const requestBody = {
       messages: this.formatMessages(messages),
-    });
+      max_tokens: 4096,
+      temperature: 0.7,
+      anthropic_version: 'bedrock-2023-05-31',
+      ...(systemPrompt && { system: systemPrompt }),
+    };
 
-    const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${config.model}/invoke-with-response-stream`;
+    // Streaming endpoint
+    const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke-with-response-stream`;
 
     try {
       const response = await fetch(url, {
@@ -89,12 +108,21 @@ export class BedrockAdapter implements IAIService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body,
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Bedrock Stream Error (${response.status}): ${errorText}`);
+
+        if (response.status === 401) {
+          throw new Error('Invalid API key - Authentication failed');
+        } else if (response.status === 403) {
+          throw new Error(`Access denied - Request model access in AWS Console for: ${modelId}`);
+        } else if (response.status === 404) {
+          throw new Error(`Model not found or not available in region: ${region}`);
+        } else {
+          throw new Error(`Bedrock Error (${response.status}): ${errorText}`);
+        }
       }
 
       const reader = response.body?.getReader();
@@ -134,13 +162,49 @@ export class BedrockAdapter implements IAIService {
         }
       }
     } catch (error) {
-      console.error("Bedrock Stream Error:", error);
-      throw error;
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Bedrock streaming failed');
     }
   }
 
   async validateApiKey(apiKey: string): Promise<boolean> {
     return apiKey.trim().length > 0;
+  }
+
+  /**
+   * Fetch available models from Bedrock
+   * Endpoint: bedrock.{region}.amazonaws.com/foundation-models
+   */
+  async fetchAvailableModels(apiKey: string, region: string = 'us-east-1'): Promise<{ id: string; name: string; provider: string }[]> {
+    const url = `https://bedrock.${region}.amazonaws.com/foundation-models`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Parse the response
+      return (data.modelSummaries || []).map((model: { modelId: string; modelName: string; providerName: string }) => ({
+        id: model.modelId,
+        name: model.modelName,
+        provider: model.providerName,
+      }));
+    } catch {
+      return [];
+    }
   }
 }
 
