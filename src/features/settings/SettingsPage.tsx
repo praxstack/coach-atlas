@@ -291,7 +291,7 @@ const Settings = () => {
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   {currentProvider.id === "bedrock"
-                    ? "Enter your AWS region. Credentials are loaded from ~/.aws/credentials or environment variables."
+                    ? "Enter your Bedrock API key. Supports base64 encoded keys or AccessKey:SecretKey:Region format."
                     : "Get your API key from the provider's console."}
                 </p>
               </div>

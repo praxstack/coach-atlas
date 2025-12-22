@@ -7,11 +7,48 @@ import type { AIRequest, AIResponse, IAIService, Message, StreamChunk } from "..
 
 export class BedrockAdapter implements IAIService {
   private getClient(apiKey: string): BedrockRuntimeClient {
-    // apiKey is just the region (e.g., "us-east-1")
-    // AWS SDK automatically uses credentials from:
-    // 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-    // 2. ~/.aws/credentials file
-    // 3. IAM role (EC2/Lambda)
+    // Try to decode Bedrock API Key format (base64 encoded credentials)
+    // Format: base64(BedrockAPIKey-{region}-{timestamp}:{accessKeyId}:{secretAccessKey})
+    try {
+      const decoded = atob(apiKey);
+
+      // Check if it's a Bedrock API Key format
+      if (decoded.startsWith('BedrockAPIKey-')) {
+        // Format: BedrockAPIKey-{region}-{timestamp}:{accessKeyId}:{secretAccessKey}
+        const parts = decoded.split(':');
+        if (parts.length >= 3) {
+          const headerParts = parts[0].split('-');
+          const region = headerParts[1] || 'us-east-1';
+          const accessKeyId = parts[1];
+          const secretAccessKey = parts.slice(2).join(':'); // Handle colons in secret
+
+          return new BedrockRuntimeClient({
+            region,
+            credentials: {
+              accessKeyId,
+              secretAccessKey,
+            },
+          });
+        }
+      }
+
+      // Fallback: Try simple AccessKey:SecretKey:Region format
+      const simpleParts = apiKey.split(':');
+      if (simpleParts.length >= 2) {
+        const [accessKeyId, secretAccessKey, region] = simpleParts;
+        return new BedrockRuntimeClient({
+          region: region || 'us-east-1',
+          credentials: {
+            accessKeyId,
+            secretAccessKey,
+          },
+        });
+      }
+    } catch {
+      // Not base64 encoded, treat as region for environment credentials
+    }
+
+    // Fallback: Use as region with environment credentials
     return new BedrockRuntimeClient({
       region: apiKey || "us-east-1",
     });
