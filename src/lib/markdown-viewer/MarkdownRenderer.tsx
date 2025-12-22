@@ -217,6 +217,11 @@ function isMermaidDiagramComplete(code: string): boolean {
     if (!trimmed.includes('-->') && !trimmed.includes('---') && !trimmed.includes('-.-')) {
       return false;
     }
+    // Check for incomplete arrows at end of lines (streaming artifact)
+    // e.g., "ptr -->" without a target node
+    if (/-->\s*$/m.test(trimmed) || /---\s*$/m.test(trimmed) || /-\.-\s*$/m.test(trimmed)) {
+      return false;
+    }
   }
 
   // - Check for unclosed brackets that indicate incomplete streaming

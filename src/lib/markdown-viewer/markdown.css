@@ -4,6 +4,23 @@
   font-size: 16px;
   line-height: 1.6;
   word-wrap: break-word;
+  /* Ensure proper emoji rendering with fallback fonts */
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans",
+    Helvetica,
+    Arial,
+    sans-serif,
+    "Apple Color Emoji",
+    /* macOS/iOS emoji */
+    "Segoe UI Emoji",
+    /* Windows emoji */
+    "Segoe UI Symbol",
+    /* Windows symbols */
+    "Noto Color Emoji";
+  /* Android/Linux emoji */
 }
 
 .markdown-body h1,
