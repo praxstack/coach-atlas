@@ -41,18 +41,20 @@ export const providers: ProviderConfig[] = [
     name: 'AWS Bedrock',
     description: 'Amazon Bedrock with inference profiles',
     models: [
-      // ALL models now require inference profile IDs (us. or eu. or global.)
-      // Claude 3.5
-      { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: '⭐ Recommended' },
-      { id: 'us.anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast' },
-      // Claude 4.5
-      { id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5', description: 'Newest' },
-      { id: 'us.anthropic.claude-opus-4-1-20250805-v1:0', name: 'Claude Opus 4.1', description: 'Most capable' },
+      // Claude 4.5 (Latest - Nov 2025)
+      { id: 'us.anthropic.claude-opus-4-5-20251101-v1:0', name: 'Claude Opus 4.5', description: '🔥 Most capable (Nov 2025)' },
+      { id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5', description: '⭐ Best balance (Sep 2025)' },
+      { id: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5', description: '⚡ Fastest (Oct 2025)' },
+      // Claude 4 (May 2025)
+      { id: 'us.anthropic.claude-opus-4-20250514-v1:0', name: 'Claude Opus 4', description: 'Highly capable' },
+      { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', name: 'Claude Sonnet 4', description: 'Balanced' },
       // Claude 3.7
       { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet', description: 'Latest 3.x' },
-      // Claude 3
+      // Claude 3.5
+      { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: 'Stable' },
+      { id: 'us.anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast' },
+      // Claude 3 Legacy
       { id: 'us.anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', description: 'Legacy flagship' },
-      { id: 'us.anthropic.claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', description: 'Legacy balanced' },
       { id: 'us.anthropic.claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', description: 'Legacy fast' },
       // Other providers
       { id: 'us.amazon.titan-text-premier-v1:0', name: 'Amazon Titan Premier', description: 'Amazon flagship' },
