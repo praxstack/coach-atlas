@@ -55,6 +55,18 @@ export default defineConfig(({ mode }) => ({
           if (id.includes("sonner")) {
             return "vendor-toast";
           }
+          // Mermaid (heavy - lazy loaded)
+          if (id.includes("mermaid")) {
+            return "vendor-mermaid";
+          }
+          // Cytoscape (heavy - lazy loaded)
+          if (id.includes("cytoscape")) {
+            return "vendor-cytoscape";
+          }
+          // Date libraries
+          if (id.includes("date-fns") || id.includes("dayjs")) {
+            return "vendor-date";
+          }
         },
       },
     },
