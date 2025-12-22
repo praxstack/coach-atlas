@@ -39,23 +39,24 @@ export const providers: ProviderConfig[] = [
   {
     id: 'bedrock',
     name: 'AWS Bedrock',
-    description: 'Amazon Bedrock with Bearer token auth',
+    description: 'Amazon Bedrock with inference profiles',
     models: [
-      // Claude 3.5 - These work with direct model IDs (most reliable)
-      { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: '⭐ Recommended (Oct 2024)' },
-      { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast (Oct 2024)' },
-      // Claude 3 - Legacy direct model IDs (stable)
-      { id: 'anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', description: 'Most capable 3.x' },
-      { id: 'anthropic.claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', description: 'Balanced' },
-      { id: 'anthropic.claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', description: 'Fast' },
-      // Claude 4.5+ (Require inference profiles - experimental)
-      { id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5 (US Profile)', description: 'Newest - requires profile access' },
-      { id: 'us.anthropic.claude-opus-4-1-20250805-v1:0', name: 'Claude Opus 4.1 (US Profile)', description: 'Requires profile access' },
-      { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet (US Profile)', description: 'Requires profile access' },
+      // ALL models now require inference profile IDs (us. or eu. or global.)
+      // Claude 3.5
+      { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: '⭐ Recommended' },
+      { id: 'us.anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast' },
+      // Claude 4.5
+      { id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5', description: 'Newest' },
+      { id: 'us.anthropic.claude-opus-4-1-20250805-v1:0', name: 'Claude Opus 4.1', description: 'Most capable' },
+      // Claude 3.7
+      { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet', description: 'Latest 3.x' },
+      // Claude 3
+      { id: 'us.anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', description: 'Legacy flagship' },
+      { id: 'us.anthropic.claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', description: 'Legacy balanced' },
+      { id: 'us.anthropic.claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', description: 'Legacy fast' },
       // Other providers
-      { id: 'amazon.titan-text-premier-v1:0', name: 'Amazon Titan Premier', description: 'Amazon flagship' },
-      { id: 'meta.llama3-2-90b-instruct-v1:0', name: 'Llama 3.2 90B', description: 'Meta large model' },
-      { id: 'mistral.mistral-large-2407-v1:0', name: 'Mistral Large', description: 'Mistral flagship' },
+      { id: 'us.amazon.titan-text-premier-v1:0', name: 'Amazon Titan Premier', description: 'Amazon flagship' },
+      { id: 'us.meta.llama3-2-90b-instruct-v1:0', name: 'Llama 3.2 90B', description: 'Meta large model' },
     ],
     fields: [
       { key: 'apiKey', label: 'Bedrock API Key', placeholder: 'Your Bedrock API key', type: 'password' },
