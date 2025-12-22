@@ -297,9 +297,25 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     html = renderMath(html);
 
     // 3. Sanitize HTML (XSS protection)
+    // Allow iframes only from trusted sources
+    DOMPurify.addHook('uponSanitizeElement', (currentNode, data) => {
+      if (data.tagName === 'iframe') {
+        const node = currentNode as Element;
+        const src = node.getAttribute('src') || '';
+        const allowed = [
+          'youtube.com/embed/',
+          'player.vimeo.com/video/',
+          'codesandbox.io/embed/'
+        ];
+        if (!allowed.some(domain => src.includes(domain))) {
+           node.remove();
+        }
+      }
+    });
+
     const cleanHtml = DOMPurify.sanitize(html, {
       ADD_TAGS: ["iframe"],
-      ADD_ATTR: ["target", "rel", "class", "style"],
+      ADD_ATTR: ["target", "rel", "class", "style", "allow", "allowfullscreen", "frameborder", "scrolling"],
       ALLOW_DATA_ATTR: true,
     });
 

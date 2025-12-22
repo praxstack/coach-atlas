@@ -6,6 +6,9 @@ import { useStorageService } from "@/app/ServiceContext";
 import type { Conversation } from "@/services/types";
 import { Button } from "@/shared/ui/button";
 import {
+  Coffee,
+  Github,
+  Heart,
   MessageSquare,
   Plus,
   Settings,
@@ -133,10 +136,13 @@ export function Sidebar({ onClose }: SidebarProps) {
         ) : (
           <div className="space-y-1">
             {conversations.map((conv) => (
-              <button
+              <div
                 key={conv.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelect(conv.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors group ${
+                onKeyDown={(e) => e.key === "Enter" && handleSelect(conv.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors group cursor-pointer ${
                   conversationId === conv.id
                     ? "bg-primary/10 text-primary"
                     : "hover:bg-secondary text-foreground"
@@ -153,28 +159,59 @@ export function Sidebar({ onClose }: SidebarProps) {
                   onClick={(e) => handleDelete(e, conv.id)}
                   className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded transition-opacity"
                   title="Delete conversation"
+                  aria-label={`Delete conversation: ${conv.title}`}
                 >
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </button>
-              </button>
+              </div>
             ))}
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-border">
-        <Button
-          variant="ghost"
-          className="w-full justify-start gap-2"
-          onClick={() => {
-            navigate("/settings");
-            onClose?.();
-          }}
-        >
-          <Settings className="w-4 h-4" />
-          Settings
-        </Button>
+      <div className="border-t border-border">
+        <div className="p-3">
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={() => {
+              navigate("/settings");
+              onClose?.();
+            }}
+          >
+            <Settings className="w-4 h-4" />
+            Settings
+          </Button>
+        </div>
+
+        {/* Mini Footer */}
+        <div className="px-3 py-2 border-t border-border/50 bg-card/50">
+          <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              Made with <Heart className="w-2.5 h-2.5 text-red-500 fill-red-500" />
+            </span>
+            <span>by</span>
+            <a
+              href="https://github.com/PrakharMNNIT"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-foreground transition-colors"
+            >
+              <Github className="w-3 h-3" />
+            </a>
+            <span className="text-border">|</span>
+            <a
+              href="https://ko-fi.com/praxlannister"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 hover:text-primary transition-colors"
+            >
+              <Coffee className="w-3 h-3" />
+              <span>Support</span>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );

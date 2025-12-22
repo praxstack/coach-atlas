@@ -106,9 +106,8 @@ export async function fetchOpenAIModels(apiKey: string): Promise<ModelDiscoveryR
       .filter((m: { id: string }) =>
         m.id.includes('gpt-4') ||
         m.id.includes('gpt-3.5') ||
-        m.id.includes('gpt-5') ||
-        m.id.includes('o1') ||
-        m.id.includes('o3')
+        m.id.includes('gpt-3.5') ||
+        m.id.includes('o1')
       )
       .map((m: { id: string }) => ({
         id: m.id,
@@ -118,7 +117,7 @@ export async function fetchOpenAIModels(apiKey: string): Promise<ModelDiscoveryR
       }))
       .sort((a: DiscoveredModel, b: DiscoveredModel) => {
         // Sort newest first
-        const order = ['o3', 'o1', 'gpt-5', 'gpt-4o', 'gpt-4', 'gpt-3.5'];
+        const order = ['o1', 'gpt-4o', 'gpt-4', 'gpt-3.5'];
         const aIdx = order.findIndex(p => a.id.includes(p));
         const bIdx = order.findIndex(p => b.id.includes(p));
         return aIdx - bIdx;
@@ -169,12 +168,11 @@ export async function fetchAnthropicModels(apiKey: string): Promise<ModelDiscove
 
     // Return known Anthropic models
     const models: DiscoveredModel[] = [
-      { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5', provider: 'Anthropic', description: 'Most intelligent' },
-      { id: 'claude-opus-4-1-20250805', name: 'Claude Opus 4.1', provider: 'Anthropic', description: 'Highly capable' },
-      { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet', provider: 'Anthropic', description: 'Latest 3.x' },
-      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', description: 'Stable' },
-      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'Anthropic', description: 'Fast' },
-      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'Anthropic', description: 'Legacy' },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', description: 'Most intelligent & efficient' },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'Anthropic', description: 'Most capable (Legacy)' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'Anthropic', description: 'Fastest' },
+      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', provider: 'Anthropic', description: 'Balanced (Legacy)' },
+      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', provider: 'Anthropic', description: 'Fast (Legacy)' },
     ];
 
     console.log('[ModelDiscovery] Anthropic key validated, returning known models');
@@ -244,10 +242,8 @@ function formatModelName(id: string): string {
 }
 
 function getOpenAIDescription(id: string): string {
-  if (id.includes('o3')) return 'Latest reasoning model';
   if (id.includes('o1')) return 'Advanced reasoning';
-  if (id.includes('gpt-5')) return 'Most capable';
-  if (id.includes('gpt-4o')) return 'Multimodal';
+  if (id.includes('gpt-4o')) return 'Multimodal flagship';
   if (id.includes('gpt-4-turbo')) return 'Fast GPT-4';
   if (id.includes('gpt-4')) return 'GPT-4';
   if (id.includes('gpt-3.5')) return 'Fast and cheap';
