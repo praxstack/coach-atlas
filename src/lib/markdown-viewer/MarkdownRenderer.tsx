@@ -176,9 +176,72 @@ async function initMermaid() {
     startOnLoad: false,
     theme: "dark",
     securityLevel: "loose",
+    suppressErrorRendering: true, // Don't render error diagrams
   } as Parameters<typeof mermaid.default.initialize>[0]);
   mermaidInitialized = true;
 }
+
+/**
+ * Validate mermaid diagram syntax before rendering
+ * Returns true if the diagram looks complete and valid
+ */
+function isMermaidDiagramComplete(code: string): boolean {
+  const trimmed = code.trim();
+
+  // Must have at least one valid diagram type declaration
+  const validStarts = [
+    /^flowchart\s+(TB|TD|BT|RL|LR)/m,
+    /^graph\s+(TB|TD|BT|RL|LR)/m,
+    /^sequenceDiagram/m,
+    /^classDiagram/m,
+    /^stateDiagram/m,
+    /^erDiagram/m,
+    /^journey/m,
+    /^gantt/m,
+    /^pie/m,
+    /^mindmap/m,
+    /^timeline/m,
+    /^gitgraph/m,
+  ];
+
+  const hasValidStart = validStarts.some(regex => regex.test(trimmed));
+  if (!hasValidStart) return false;
+
+  // Basic completeness checks
+  // - Should have at least 2 lines (declaration + content)
+  const lines = trimmed.split('\n').filter(l => l.trim());
+  if (lines.length < 2) return false;
+
+  // - Flowcharts/graphs need at least one node connection (-->)
+  if (/^(flowchart|graph)\s/m.test(trimmed)) {
+    if (!trimmed.includes('-->') && !trimmed.includes('---') && !trimmed.includes('-.-')) {
+      return false;
+    }
+  }
+
+  // - Check for unclosed brackets that indicate incomplete streaming
+  const openBrackets = (trimmed.match(/\[/g) || []).length;
+  const closeBrackets = (trimmed.match(/\]/g) || []).length;
+  if (openBrackets !== closeBrackets) return false;
+
+  const openParens = (trimmed.match(/\(/g) || []).length;
+  const closeParens = (trimmed.match(/\)/g) || []).length;
+  if (openParens !== closeParens) return false;
+
+  // - Check for unclosed quotes
+  const doubleQuotes = (trimmed.match(/"/g) || []).length;
+  if (doubleQuotes % 2 !== 0) return false;
+
+  // - Subgraphs must be closed
+  const subgraphCount = (trimmed.match(/\bsubgraph\b/g) || []).length;
+  const endCount = (trimmed.match(/\bend\b/g) || []).length;
+  if (subgraphCount > endCount) return false;
+
+  return true;
+}
+
+// Track rendered mermaid blocks to avoid re-rendering
+const renderedMermaidBlocks = new WeakSet<Element>();
 
 async function renderMermaidDiagrams(container: HTMLElement) {
   const mermaidBlocks = container.querySelectorAll("code.language-mermaid");
@@ -192,7 +255,24 @@ async function renderMermaidDiagrams(container: HTMLElement) {
     const pre = block.parentElement;
     if (!pre) continue;
 
+    // Skip already rendered blocks
+    if (renderedMermaidBlocks.has(pre)) continue;
+
     const code = block.textContent || "";
+
+    // Validate diagram completeness before rendering
+    if (!isMermaidDiagramComplete(code)) {
+      // Show "rendering..." placeholder for incomplete diagrams
+      if (!pre.classList.contains('mermaid-pending')) {
+        pre.classList.add('mermaid-pending');
+        const placeholder = document.createElement('div');
+        placeholder.className = 'mermaid-placeholder';
+        placeholder.innerHTML = '<span class="mermaid-loading">⏳ Diagram loading...</span>';
+        pre.parentElement?.insertBefore(placeholder, pre.nextSibling);
+      }
+      continue;
+    }
+
     const id = `mermaid-${Date.now()}-${i}`;
 
     try {
@@ -200,10 +280,25 @@ async function renderMermaidDiagrams(container: HTMLElement) {
       const wrapper = document.createElement("div");
       wrapper.className = "mermaid-diagram";
       wrapper.innerHTML = svg;
+
+      // Remove placeholder if exists
+      const placeholder = pre.parentElement?.querySelector('.mermaid-placeholder');
+      placeholder?.remove();
+
       pre.replaceWith(wrapper);
+      renderedMermaidBlocks.add(wrapper);
     } catch (error) {
-      console.error("Mermaid rendering error:", error);
-      pre.innerHTML = `<div class="mermaid-error">Diagram error: ${error}</div>`;
+      // Silently skip incomplete diagrams during streaming
+      // Only show error if diagram looks complete but still fails
+      if (isMermaidDiagramComplete(code)) {
+        console.warn("Mermaid rendering error (complete diagram):", error);
+        const errorWrapper = document.createElement("div");
+        errorWrapper.className = "mermaid-error";
+        errorWrapper.innerHTML = `<span>⚠️ Diagram syntax error</span><pre>${code.slice(0, 100)}...</pre>`;
+        pre.replaceWith(errorWrapper);
+        renderedMermaidBlocks.add(errorWrapper);
+      }
+      // For incomplete diagrams, just wait for more content
     }
   }
 }

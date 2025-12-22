@@ -580,3 +580,113 @@
     transition: none;
   }
 }
+
+/* ============================================
+   Mermaid Loading/Placeholder States
+   ============================================ */
+
+.markdown-body .mermaid-pending {
+  opacity: 0.6;
+}
+
+.markdown-body .mermaid-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  margin: 8px 0;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px dashed rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+}
+
+.markdown-body .mermaid-loading {
+  color: #60a5fa;
+  font-size: 14px;
+  animation: mermaid-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes mermaid-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.markdown-body .mermaid-error {
+  color: #f85149;
+  padding: 16px;
+  background-color: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.2);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.markdown-body .mermaid-error span {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.markdown-body .mermaid-error pre {
+  margin: 0;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ============================================
+   Unicode Box-Drawing Characters Fix
+   Use fonts that properly support box-drawing
+   ============================================ */
+
+.markdown-body pre,
+.markdown-body pre code,
+.markdown-body code {
+  /* Font stack with good box-drawing support */
+  font-family:
+    "JetBrains Mono",
+    /* Best box-drawing support */
+    "Fira Code",
+    "Source Code Pro",
+    "DejaVu Sans Mono",
+    /* Excellent Unicode support */
+    "Liberation Mono",
+    ui-monospace,
+    SFMono-Regular,
+    'SF Mono',
+    Menlo,
+    Monaco,
+    Consolas,
+    "Courier New",
+    monospace;
+  /* Ensure proper character rendering */
+  font-feature-settings: "liga" 0;
+  /* Disable ligatures for box chars */
+  text-rendering: geometricPrecision;
+}
+
+/* ASCII Art and Box-Drawing specific styling */
+.markdown-body pre code {
+  /* Prevent line-height issues with box drawing */
+  line-height: 1.3;
+  /* Better rendering for special characters */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure box-drawing characters don't get broken up */
+.markdown-body pre {
+  white-space: pre;
+  word-wrap: normal;
+  overflow-x: auto;
+}
