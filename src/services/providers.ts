@@ -39,7 +39,7 @@ export const providers: ProviderConfig[] = [
   {
     id: 'bedrock',
     name: 'AWS Bedrock',
-    description: 'Amazon Bedrock foundation models',
+    description: 'Uses AWS credentials from environment (~/.aws/credentials)',
     models: [
       { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: 'Latest Claude on Bedrock' },
       { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast Claude model' },
@@ -48,7 +48,7 @@ export const providers: ProviderConfig[] = [
       { id: 'mistral.mistral-large-2407-v1:0', name: 'Mistral Large', description: 'Mistral flagship' },
     ],
     fields: [
-      { key: 'apiKey', label: 'AWS Credentials', placeholder: 'AccessKeyId:SecretAccessKey:Region (e.g. AKIA...:secret:us-east-1)', type: 'password' },
+      { key: 'apiKey', label: 'AWS Region', placeholder: 'us-east-1', type: 'text' },
     ],
   },
   {

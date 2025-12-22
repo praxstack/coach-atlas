@@ -1,25 +1,19 @@
 import {
-    BedrockRuntimeClient,
-    InvokeModelCommand,
-    InvokeModelWithResponseStreamCommand,
+  BedrockRuntimeClient,
+  InvokeModelCommand,
+  InvokeModelWithResponseStreamCommand,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { AIRequest, AIResponse, IAIService, Message, StreamChunk } from "../../types";
 
 export class BedrockAdapter implements IAIService {
   private getClient(apiKey: string): BedrockRuntimeClient {
-    const parts = apiKey.split(":");
-    // Supports 2 parts (AccessKey:SecretKey) or 3 parts (AccessKey:SecretKey:Region)
-    if (parts.length < 2) {
-      throw new Error("Invalid Bedrock API Key format. Expected 'AccessKey:SecretKey' or 'AccessKey:SecretKey:Region'");
-    }
-    const [accessKeyId, secretAccessKey, region] = parts;
-
+    // apiKey is just the region (e.g., "us-east-1")
+    // AWS SDK automatically uses credentials from:
+    // 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+    // 2. ~/.aws/credentials file
+    // 3. IAM role (EC2/Lambda)
     return new BedrockRuntimeClient({
-      region: region || "us-east-1",
-      credentials: {
-        accessKeyId,
-        secretAccessKey,
-      },
+      region: apiKey || "us-east-1",
     });
   }
 
@@ -118,12 +112,8 @@ export class BedrockAdapter implements IAIService {
   }
 
   async validateApiKey(apiKey: string): Promise<boolean> {
-    try {
-       const parts = apiKey.split(":");
-       return parts.length >= 2;
-    } catch {
-      return false;
-    }
+    // apiKey is just the region - any non-empty string is valid
+    return apiKey.trim().length > 0;
   }
 }
 
