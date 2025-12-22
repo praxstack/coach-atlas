@@ -50,6 +50,7 @@ function InterviewContent() {
 
   // Local state
   const [config, setConfig] = useState<ProviderConfig | null>(null);
+  const [isConfigLoading, setIsConfigLoading] = useState(true);
   const [isSetupOpen, setIsSetupOpen] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -64,18 +65,23 @@ function InterviewContent() {
   // Load config on mount
   useEffect(() => {
     const loadConfig = async () => {
-      const storedConfig = await storageService.loadProviderConfig();
-      if (!storedConfig) {
-        toast.error("Please configure your API key first");
-        navigate("/settings");
-        return;
+      setIsConfigLoading(true);
+      try {
+        const storedConfig = await storageService.loadProviderConfig();
+        if (!storedConfig) {
+          toast.error("Please configure your API key first");
+          navigate("/settings");
+          return;
+        }
+        setConfig({
+          provider: storedConfig.provider as ProviderId,
+          apiKey: storedConfig.apiKey,
+          model: storedConfig.model,
+          region: storedConfig.region,
+        });
+      } finally {
+        setIsConfigLoading(false);
       }
-      setConfig({
-        provider: storedConfig.provider as ProviderId,
-        apiKey: storedConfig.apiKey,
-        model: storedConfig.model,
-        region: storedConfig.region,
-      });
     };
     loadConfig();
   }, [storageService, navigate]);
@@ -223,6 +229,21 @@ Do NOT:
   // Render based on status
   // ============================================
 
+  // Loading config
+  if (isConfigLoading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">
+            Loading Interview Mode...
+          </h2>
+          <p className="text-gray-400">Checking API configuration</p>
+        </div>
+      </div>
+    );
+  }
+
   // Idle/Setup: Show modal
   if (status === "idle" || status === "setup") {
     return (
@@ -297,9 +318,9 @@ Do NOT:
         )
       }
       chatPanel={
-        <div className="flex flex-col h-full">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex flex-col h-full relative">
+          {/* Messages - scrollable area with padding for fixed input */}
+          <div className="flex-1 overflow-y-auto p-4 pb-24">
             <div className="space-y-4">
               {messages.map((message) => (
                 <div
@@ -356,8 +377,8 @@ Do NOT:
             </div>
           </div>
 
-          {/* Input */}
-          <div className="border-t border-gray-700 p-4">
+          {/* Input - Fixed at bottom */}
+          <div className="absolute bottom-0 left-0 right-0 border-t border-gray-700 bg-gray-950 p-4">
             <div className="flex gap-3">
               <input
                 type="text"
