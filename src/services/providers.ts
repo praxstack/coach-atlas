@@ -41,9 +41,23 @@ export const providers: ProviderConfig[] = [
     name: 'AWS Bedrock',
     description: 'Uses AWS credentials from environment (~/.aws/credentials)',
     models: [
-      { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: 'Latest Claude on Bedrock' },
-      { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast Claude model' },
-      { id: 'amazon.titan-text-premier-v1:0', name: 'Amazon Titan Premier', description: 'Amazon flagship model' },
+      // Claude 4.5 (Latest)
+      { id: 'anthropic.claude-opus-4-5-20251101-v1:0', name: 'Claude Opus 4.5', description: 'Most capable (Nov 2025)' },
+      { id: 'anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5', description: 'Balanced (Sep 2025)' },
+      { id: 'anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5', description: 'Fast (Oct 2025)' },
+      // Claude 4
+      { id: 'anthropic.claude-opus-4-20250514-v1:0', name: 'Claude Opus 4', description: 'Highly capable (May 2025)' },
+      { id: 'anthropic.claude-sonnet-4-20250514-v1:0', name: 'Claude Sonnet 4', description: 'Balanced (May 2025)' },
+      // Claude 3.7
+      { id: 'anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet', description: 'Latest 3.x (Feb 2025)' },
+      // Claude 3.5
+      { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: 'Stable (Oct 2024)' },
+      { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast (Oct 2024)' },
+      // Claude 3
+      { id: 'anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', description: 'Legacy flagship' },
+      { id: 'anthropic.claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', description: 'Legacy balanced' },
+      // Other providers
+      { id: 'amazon.titan-text-premier-v1:0', name: 'Amazon Titan Premier', description: 'Amazon flagship' },
       { id: 'meta.llama3-2-90b-instruct-v1:0', name: 'Llama 3.2 90B', description: 'Meta large model' },
       { id: 'mistral.mistral-large-2407-v1:0', name: 'Mistral Large', description: 'Mistral flagship' },
     ],
