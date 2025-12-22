@@ -12,7 +12,7 @@ export const providers: ProviderConfig[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'GPT-4, GPT-5, and other OpenAI models',
+    description: 'GPT-4o and other OpenAI models',
     models: [
       { id: 'gpt-4o', name: 'GPT-4o', description: 'Multimodal flagship' },
       { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and cost-effective' },
