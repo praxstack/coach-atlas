@@ -47,7 +47,7 @@ export class BedrockAdapter implements IAIService {
 
     // Debug logging (dev only, never log API keys)
     if (import.meta.env.DEV) {
-      console.log('[Bedrock] Region:', region, '| Model:', modelId, '| Messages:', messages.length);
+      console.log('[Bedrock] sendMessage | Region:', region, '| Model:', modelId, '| Messages:', messages.length);
     }
 
     // Build request body for Anthropic Claude models
@@ -60,6 +60,14 @@ export class BedrockAdapter implements IAIService {
     };
 
     const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
+    console.log('[Bedrock] Fetching:', url);
+
+    // Add timeout using AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.warn('[Bedrock] Request timeout after 45 seconds');
+      controller.abort();
+    }, 45000);
 
     try {
       const response = await fetch(url, {
@@ -70,7 +78,11 @@ export class BedrockAdapter implements IAIService {
           'Accept': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+      console.log('[Bedrock] Response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
