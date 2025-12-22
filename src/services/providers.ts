@@ -41,21 +41,17 @@ export const providers: ProviderConfig[] = [
     name: 'AWS Bedrock',
     description: 'Amazon Bedrock with Bearer token auth',
     models: [
-      // Claude 4.5 (Latest) - Using GLOBAL inference profiles for cross-region access
-      { id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5 (US)', description: 'Most intelligent (Sep 2025)' },
-      { id: 'us.anthropic.claude-haiku-4-5-20251001-v1:0', name: 'Claude Haiku 4.5 (US)', description: 'Fast (Oct 2025)' },
-      // Claude 4 - Inference profiles
-      { id: 'us.anthropic.claude-opus-4-1-20250805-v1:0', name: 'Claude Opus 4.1 (US)', description: 'Most capable (Aug 2025)' },
-      { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', name: 'Claude Sonnet 4 (US)', description: 'Balanced (May 2025)' },
-      // Claude 3.7
-      { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet (US)', description: 'Latest 3.x (Feb 2025)' },
-      // Claude 3.5 - These work with direct model IDs
-      { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: 'Stable (Oct 2024)' },
+      // Claude 3.5 - These work with direct model IDs (most reliable)
+      { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', description: '⭐ Recommended (Oct 2024)' },
       { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', description: 'Fast (Oct 2024)' },
-      // Claude 3 - Legacy direct model IDs
-      { id: 'anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', description: 'Legacy flagship' },
-      { id: 'anthropic.claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', description: 'Legacy balanced' },
-      { id: 'anthropic.claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', description: 'Legacy fast' },
+      // Claude 3 - Legacy direct model IDs (stable)
+      { id: 'anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', description: 'Most capable 3.x' },
+      { id: 'anthropic.claude-3-sonnet-20240229-v1:0', name: 'Claude 3 Sonnet', description: 'Balanced' },
+      { id: 'anthropic.claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', description: 'Fast' },
+      // Claude 4.5+ (Require inference profiles - experimental)
+      { id: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0', name: 'Claude Sonnet 4.5 (US Profile)', description: 'Newest - requires profile access' },
+      { id: 'us.anthropic.claude-opus-4-1-20250805-v1:0', name: 'Claude Opus 4.1 (US Profile)', description: 'Requires profile access' },
+      { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet (US Profile)', description: 'Requires profile access' },
       // Other providers
       { id: 'amazon.titan-text-premier-v1:0', name: 'Amazon Titan Premier', description: 'Amazon flagship' },
       { id: 'meta.llama3-2-90b-instruct-v1:0', name: 'Llama 3.2 90B', description: 'Meta large model' },
