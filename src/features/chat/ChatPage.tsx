@@ -18,7 +18,7 @@ import {
   User,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 // UI message type (extends service Message with optional fields during loading)
@@ -30,6 +30,7 @@ interface UIMessage {
 
 const Chat = () => {
   const navigate = useNavigate();
+  const { conversationId: urlConversationId } = useParams();
   const aiService = useAIService();
   const storageService = useStorageService();
 
@@ -62,8 +63,25 @@ const Chat = () => {
         model: storedConfig.model,
       });
 
-      // Get or create conversation
-      const conv = await storageService.getOrCreateDefaultConversation();
+      // Load conversation by ID if provided, otherwise get/create default
+      let conv: Conversation | undefined;
+
+      if (urlConversationId) {
+        conv = await storageService.getConversation(urlConversationId);
+        if (!conv) {
+          // Invalid conversation ID - redirect to /chat
+          toast.error("Conversation not found");
+          navigate("/chat");
+          return;
+        }
+      } else {
+        // No ID provided - get or create default
+        conv = await storageService.getOrCreateDefaultConversation();
+        // Redirect to proper URL with ID
+        navigate(`/chat/${conv.id}`, { replace: true });
+        return;
+      }
+
       setConversation(conv);
 
       // Load existing messages
@@ -117,11 +135,15 @@ What brings you here today?`,
     } finally {
       setIsInitializing(false);
     }
-  }, [navigate, storageService]);
+  }, [navigate, storageService, urlConversationId]);
 
   useEffect(() => {
+    // Reset state when conversation changes
+    setMessages([]);
+    setIsInitializing(true);
+    setError(null);
     initialize();
-  }, [initialize]);
+  }, [initialize, urlConversationId]);
 
   // Auto-scroll to bottom
   useEffect(() => {

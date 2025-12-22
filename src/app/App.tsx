@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ServiceProvider } from "./ServiceContext";
+import { SidebarLayout } from "./SidebarLayout";
 
 const queryClient = new QueryClient();
 
@@ -19,10 +20,17 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Landing page - no sidebar */}
             <Route path="/" element={<Index />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/chat" element={<Chat />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
+            {/* Chat routes with sidebar */}
+            <Route element={<SidebarLayout />}>
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/chat/:conversationId" element={<Chat />} />
+            </Route>
+
+            {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
