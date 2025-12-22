@@ -155,36 +155,57 @@ export class InterviewService {
     session: InterviewSession,
     chatHistory: string
   ): Promise<EvaluationReport> {
+    console.log("[InterviewService] Starting evaluation generation...");
+
     const problem = session.problems[session.currentProblemIndex];
     const timeUsedMs = Date.now() - session.startTime - session.totalPausedTime;
     const timeUsedMinutes = Math.floor(timeUsedMs / 60000);
     const hintsUsed = session.hintsUsedPerProblem[session.currentProblemIndex] || 0;
 
+    // Truncate chat history to avoid token limits
+    const truncatedHistory = chatHistory.slice(0, 3000);
+
     const prompt = EVALUATION_PROMPT
       .replace("{problem_title}", problem.title)
-      .replace("{problem_description}", problem.description)
-      .replace("{chat_history}", chatHistory)
+      .replace("{problem_description}", problem.description.slice(0, 500))
+      .replace("{chat_history}", truncatedHistory)
       .replace("{time_taken}", String(timeUsedMinutes))
       .replace("{total_time}", String(session.durationMinutes))
       .replace("{hints_used}", String(hintsUsed));
 
-    const response = await this.aiService.sendMessage({
-      messages: [
-        {
-          id: `interview-eval-${Date.now()}`,
-          conversationId: session.id,
-          role: "user",
-          content: prompt,
-          timestamp: Date.now(),
-        },
-      ],
-      config: this.providerConfig,
+    console.log("[InterviewService] Sending evaluation request to AI...", {
+      provider: this.providerConfig.provider,
+      model: this.providerConfig.model,
+      promptLength: prompt.length,
     });
 
-    // Extract and validate JSON
-    const jsonStr = this.extractJson(response.content);
-    const evaluation = this.parseAndValidateEvaluation(jsonStr, hintsUsed);
-    return evaluation;
+    try {
+      const response = await this.aiService.sendMessage({
+        messages: [
+          {
+            id: `interview-eval-${Date.now()}`,
+            conversationId: session.id,
+            role: "user",
+            content: prompt,
+            timestamp: Date.now(),
+          },
+        ],
+        config: this.providerConfig,
+      });
+
+      console.log("[InterviewService] AI response received", {
+        contentLength: response.content?.length,
+      });
+
+      // Extract and validate JSON
+      const jsonStr = this.extractJson(response.content);
+      const evaluation = this.parseAndValidateEvaluation(jsonStr, hintsUsed);
+      console.log("[InterviewService] Evaluation parsed successfully");
+      return evaluation;
+    } catch (error) {
+      console.error("[InterviewService] AI request failed:", error);
+      throw error;
+    }
   }
 
   /**

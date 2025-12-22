@@ -217,48 +217,57 @@ Do NOT:
     submit();
     setIsEvaluating(true);
 
+    // Fallback evaluation
+    const fallbackEvaluation = {
+      overallScore: 3,
+      dimensions: {
+        problemSolving: 3,
+        coding: 3,
+        communication: 3,
+        verification: 3,
+        timeManagement: 3,
+      },
+      feedback: {
+        strengths: ["You completed the interview session"],
+        weaknesses: ["AI evaluation could not be generated"],
+        actionItems: ["Practice more problems", "Review your approach"],
+        followUpQuestions: [],
+      },
+      generatedAt: Date.now(),
+      modelUsed: "fallback",
+    };
+
     try {
       const interviewService = getInterviewService(aiService, config);
 
-      // Build chat history string
-      const chatHistory = messages
-        .map((m) => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content}`)
+      // Build chat history - limit to last 10 messages to avoid token limits
+      const recentMessages = messages.slice(-10);
+      const chatHistory = recentMessages
+        .map((m) => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content.slice(0, 500)}...`)
         .join("\n\n");
 
-      // Generate evaluation with timeout
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Evaluation timed out after 60 seconds")), 60000);
-      });
+      console.log("[Interview] Generating evaluation...", { messageCount: recentMessages.length });
 
-      const evaluation = await Promise.race([
-        interviewService.generateEvaluation(session, chatHistory),
-        timeoutPromise,
-      ]);
+      // Generate evaluation with SHORT timeout (30 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.warn("[Interview] Evaluation timeout - aborting");
+        controller.abort();
+      }, 30000);
 
-      setEvaluation(evaluation);
+      try {
+        const evaluation = await interviewService.generateEvaluation(session, chatHistory);
+        clearTimeout(timeoutId);
+        setEvaluation(evaluation);
+        console.log("[Interview] Evaluation complete:", evaluation);
+      } catch (evalError) {
+        clearTimeout(timeoutId);
+        console.error("[Interview] Evaluation API error:", evalError);
+        throw evalError;
+      }
     } catch (error) {
-      console.error("Evaluation failed:", error);
-      toast.error(`Evaluation failed: ${error}. Creating fallback report.`);
-
-      // Create fallback evaluation so user isn't stuck
-      const fallbackEvaluation = {
-        overallScore: 3,
-        dimensions: {
-          problemSolving: 3,
-          coding: 3,
-          communication: 3,
-          verification: 3,
-          timeManagement: 3,
-        },
-        feedback: {
-          strengths: ["You attempted the problem"],
-          weaknesses: ["Evaluation could not be generated - please try again"],
-          actionItems: ["Practice more problems", "Review your approach"],
-          followUpQuestions: [],
-        },
-        generatedAt: Date.now(),
-        modelUsed: "fallback",
-      };
+      console.error("[Interview] Evaluation failed:", error);
+      toast.error("Evaluation timed out. Using fallback report.");
       setEvaluation(fallbackEvaluation);
     } finally {
       setIsEvaluating(false);
