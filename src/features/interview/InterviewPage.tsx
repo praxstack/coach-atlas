@@ -24,7 +24,14 @@ import {
   useInterview,
 } from "./context/InterviewContext";
 import { getInterviewService } from "./services/InterviewService";
-import { createProgressiveEvaluator, type ProgressiveEvaluator } from "./services/ProgressiveEvaluator";
+import {
+  createProgressiveEvaluator,
+  type ProgressiveEvaluator,
+  type SerializableEvaluationState,
+} from "./services/ProgressiveEvaluator";
+
+// LocalStorage key for evaluation state persistence
+const EVAL_STATE_KEY = "coach-atlas-progressive-eval-state";
 
 // ============================================
 // Inner Component (uses context)
@@ -65,6 +72,43 @@ function InterviewContent() {
 
   // Progressive evaluator instance
   const progressiveEvaluatorRef = useRef<ProgressiveEvaluator | null>(null);
+
+  // Persisted evaluation state (survives page refresh)
+  const [persistedEvalState, setPersistedEvalState] = useState<SerializableEvaluationState | null>(null);
+
+  // Load persisted state on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(EVAL_STATE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as SerializableEvaluationState;
+        console.log("[Interview] Loaded persisted evaluation state", {
+          problemId: parsed.problemId,
+          observations: parsed.state.observations.length,
+          exchanges: parsed.exchanges.length,
+        });
+        setPersistedEvalState(parsed);
+      }
+    } catch (error) {
+      console.warn("[Interview] Failed to load persisted eval state:", error);
+    }
+  }, []);
+
+  // Persistence callback for ProgressiveEvaluator
+  const handleEvalStateUpdate = useCallback((state: SerializableEvaluationState) => {
+    try {
+      localStorage.setItem(EVAL_STATE_KEY, JSON.stringify(state));
+      setPersistedEvalState(state);
+    } catch (error) {
+      console.warn("[Interview] Failed to persist eval state:", error);
+    }
+  }, []);
+
+  // Clear persisted state when starting new interview
+  const clearPersistedState = useCallback(() => {
+    localStorage.removeItem(EVAL_STATE_KEY);
+    setPersistedEvalState(null);
+  }, []);
 
   // Load config on mount
   useEffect(() => {
@@ -111,8 +155,17 @@ function InterviewContent() {
       const newSession = interviewService.createSession(interviewConfig, [problem]);
       confirmSetup(newSession);
 
-      // Initialize progressive evaluator for background evaluation
-      progressiveEvaluatorRef.current = createProgressiveEvaluator(aiService, config, problem);
+      // Clear any old persisted state since we're starting fresh
+      clearPersistedState();
+
+      // Initialize progressive evaluator with persistence callback
+      progressiveEvaluatorRef.current = createProgressiveEvaluator(
+        aiService,
+        config,
+        problem,
+        handleEvalStateUpdate,
+        undefined // No restored state for new interviews
+      );
       console.log("[Interview] Progressive evaluator initialized for real-time evaluation");
 
       // Add initial interviewer message

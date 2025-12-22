@@ -46,6 +46,22 @@ export interface ProgressiveEvaluationState {
   startTime: number;
 }
 
+/**
+ * Serializable state for persistence to IndexedDB
+ * This is what gets saved to survive page refreshes
+ */
+export interface SerializableEvaluationState {
+  state: ProgressiveEvaluationState;
+  exchanges: Array<{ userMessage: string; assistantResponse: string; index: number }>;
+  problemId: string;
+}
+
+/**
+ * Callback for state persistence
+ * Called after every state mutation so parent can sync to IndexedDB
+ */
+export type OnStateUpdateCallback = (state: SerializableEvaluationState) => void;
+
 interface MessageExchange {
   userMessage: string;
   assistantResponse: string;
@@ -61,6 +77,71 @@ interface MicroEvaluationResult {
   }>;
   scoreDeltas: Partial<DimensionScores>;
   updatedSummary: string;
+}
+
+// ============================================
+// Async Mutex Lock (prevents race conditions)
+// ============================================
+
+class AsyncMutex {
+  private locked = false;
+  private queue: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
+
+    return new Promise<void>((resolve) => {
+      this.queue.push(resolve);
+    });
+  }
+
+  release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+
+  async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+}
+
+// ============================================
+// Retry with Exponential Backoff
+// ============================================
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<T> {
+  let lastError: Error | unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        console.warn(`[ProgressiveEvaluator] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`, error);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 // ============================================
@@ -155,22 +236,42 @@ export class ProgressiveEvaluator {
   private config: ProviderConfig;
   private problem: InterviewProblem;
   private exchanges: MessageExchange[] = [];
-  private evaluationInProgress = false;
+
+  // Mutex lock for thread safety
+  private evaluationMutex = new AsyncMutex();
   private pendingEvaluation = false;
+
+  // Persistence callback
+  private onStateUpdate?: OnStateUpdateCallback;
 
   // Configuration
   private readonly EXCHANGES_PER_EVALUATION = 2;
   private readonly BASE_SCORE = 3;
+  private readonly MAX_RETRIES = 2;
 
   constructor(
     aiService: AIService,
     config: ProviderConfig,
-    problem: InterviewProblem
+    problem: InterviewProblem,
+    onStateUpdate?: OnStateUpdateCallback,
+    restoredState?: SerializableEvaluationState
   ) {
     this.aiService = aiService;
     this.config = config;
     this.problem = problem;
-    this.state = this.createInitialState();
+    this.onStateUpdate = onStateUpdate;
+
+    // Restore from persisted state if available
+    if (restoredState && restoredState.problemId === problem.id) {
+      console.log("[ProgressiveEvaluator] Restoring from persisted state", {
+        observations: restoredState.state.observations.length,
+        exchanges: restoredState.exchanges.length,
+      });
+      this.state = restoredState.state;
+      this.exchanges = restoredState.exchanges;
+    } else {
+      this.state = this.createInitialState();
+    }
   }
 
   private createInitialState(): ProgressiveEvaluationState {
@@ -201,12 +302,18 @@ export class ProgressiveEvaluator {
     this.exchanges.push({ userMessage, assistantResponse, index });
     this.state.totalExchanges = this.exchanges.length;
 
+    // Persist state after recording exchange
+    this.persistState();
+
     console.log(`[ProgressiveEvaluator] Exchange ${index} recorded. Total: ${this.exchanges.length}`);
 
     // Check if we should trigger evaluation
     const unevaluatedCount = index - this.state.lastEvaluatedIndex;
     if (unevaluatedCount >= this.EXCHANGES_PER_EVALUATION) {
-      await this.triggerBackgroundEvaluation();
+      // Fire and forget - don't await
+      this.triggerBackgroundEvaluation().catch((err) => {
+        console.error("[ProgressiveEvaluator] Background evaluation failed:", err);
+      });
     }
   }
 
@@ -215,7 +322,23 @@ export class ProgressiveEvaluator {
    */
   recordHintUsage(): void {
     this.state.hintsUsed++;
+    this.persistState();
     console.log(`[ProgressiveEvaluator] Hint used. Total: ${this.state.hintsUsed}`);
+  }
+
+  /**
+   * Persist current state via callback
+   * Called after every mutation for crash recovery
+   */
+  private persistState(): void {
+    if (this.onStateUpdate) {
+      const serializable: SerializableEvaluationState = {
+        state: { ...this.state },
+        exchanges: [...this.exchanges],
+        problemId: this.problem.id,
+      };
+      this.onStateUpdate(serializable);
+    }
   }
 
   /**
@@ -240,35 +363,33 @@ export class ProgressiveEvaluator {
   }
 
   /**
-   * Trigger background evaluation (non-blocking)
+   * Trigger background evaluation with mutex lock
+   * Ensures only one evaluation runs at a time
    */
   private async triggerBackgroundEvaluation(): Promise<void> {
-    if (this.evaluationInProgress) {
-      this.pendingEvaluation = true;
-      console.log("[ProgressiveEvaluator] Evaluation in progress, marking pending");
-      return;
-    }
+    // Use mutex to prevent concurrent evaluations
+    await this.evaluationMutex.withLock(async () => {
+      console.log("[ProgressiveEvaluator] Starting background micro-evaluation...");
 
-    this.evaluationInProgress = true;
-    console.log("[ProgressiveEvaluator] Starting background micro-evaluation...");
-
-    try {
-      await this.runMicroEvaluation();
-    } catch (error) {
-      console.error("[ProgressiveEvaluator] Micro-evaluation failed:", error);
-      // Non-fatal - we can continue with current state
-    } finally {
-      this.evaluationInProgress = false;
-
-      // Check if another evaluation was requested while we were running
-      if (this.pendingEvaluation) {
-        this.pendingEvaluation = false;
-        const unevaluated = this.exchanges.length - 1 - this.state.lastEvaluatedIndex;
-        if (unevaluated >= this.EXCHANGES_PER_EVALUATION) {
-          // Recurse with a small delay to prevent tight loops
-          setTimeout(() => this.triggerBackgroundEvaluation(), 500);
-        }
+      try {
+        // Retry with exponential backoff
+        await retryWithBackoff(
+          () => this.runMicroEvaluation(),
+          this.MAX_RETRIES,
+          1000
+        );
+      } catch (error) {
+        console.error("[ProgressiveEvaluator] Micro-evaluation failed after retries:", error);
+        // Non-fatal - we continue with current state
+        // Could add analytics/telemetry here
       }
+    });
+
+    // Check if another evaluation was requested while we were running
+    const unevaluated = this.exchanges.length - 1 - this.state.lastEvaluatedIndex;
+    if (unevaluated >= this.EXCHANGES_PER_EVALUATION) {
+      // Schedule next evaluation with delay
+      setTimeout(() => this.triggerBackgroundEvaluation(), 500);
     }
   }
 
@@ -328,6 +449,10 @@ export class ProgressiveEvaluator {
 
     this.state.lastEvaluatedIndex = endIndex;
     this.state.evaluationCount++;
+
+    // CRITICAL: Persist state after evaluation
+    this.persistState();
+
     console.log("[ProgressiveEvaluator] Micro-evaluation complete", {
       evaluationCount: this.state.evaluationCount,
       observationCount: this.state.observations.length,
@@ -562,7 +687,9 @@ export class ProgressiveEvaluator {
 export function createProgressiveEvaluator(
   aiService: AIService,
   config: ProviderConfig,
-  problem: InterviewProblem
+  problem: InterviewProblem,
+  onStateUpdate?: OnStateUpdateCallback,
+  restoredState?: SerializableEvaluationState
 ): ProgressiveEvaluator {
-  return new ProgressiveEvaluator(aiService, config, problem);
+  return new ProgressiveEvaluator(aiService, config, problem, onStateUpdate, restoredState);
 }
