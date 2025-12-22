@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Brain, Code2, Sparkles } from "lucide-react";
+import { ArrowRight, Brain, Code2, Sparkles, Key } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export const Hero = () => {
+  const navigate = useNavigate();
+  
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden hero-gradient">
       {/* Grid pattern overlay */}
@@ -32,12 +35,12 @@ export const Hero = () => {
           
           {/* CTA buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            <Button variant="hero" size="xl" className="group">
-              Start Learning
-              <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+            <Button variant="hero" size="xl" className="group" onClick={() => navigate("/settings")}>
+              <Key className="w-5 h-5" />
+              Configure API Key
             </Button>
-            <Button variant="heroOutline" size="xl">
-              View Tutorials
+            <Button variant="heroOutline" size="xl" onClick={() => navigate("/chat")}>
+              Start Chat
             </Button>
           </div>
           
