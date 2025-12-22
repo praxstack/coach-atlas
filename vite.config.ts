@@ -15,4 +15,14 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Exclude external folder from processing (reference only)
+  build: {
+    rollupOptions: {
+      external: [/src\/lib\/external\/.*/],
+    },
+  },
+  // Exclude external folder from optimization
+  optimizeDeps: {
+    exclude: ['src/lib/external'],
+  },
 }));
