@@ -124,16 +124,20 @@ export class StorageService implements IStorageService {
 
   /**
    * Save provider configuration
-   * Stores API key and model selection
+   * Stores API key, model selection, and region (for Bedrock)
    */
   async saveProviderConfig(config: {
     provider: string;
     apiKey: string;
     model: string;
+    region?: string;
   }): Promise<void> {
     await this.saveSetting("provider", config.provider);
     await this.saveSetting("apiKey", config.apiKey);
     await this.saveSetting("model", config.model);
+    if (config.region) {
+      await this.saveSetting("region", config.region);
+    }
   }
 
   /**
@@ -144,16 +148,18 @@ export class StorageService implements IStorageService {
     provider: string;
     apiKey: string;
     model: string;
+    region?: string;
   } | null> {
     const provider = await this.getSetting("provider");
     const apiKey = await this.getSetting("apiKey");
     const model = await this.getSetting("model");
+    const region = await this.getSetting("region");
 
     if (!provider || !apiKey || !model) {
       return null;
     }
 
-    return { provider, apiKey, model };
+    return { provider, apiKey, model, region: region || undefined };
   }
 
   /**

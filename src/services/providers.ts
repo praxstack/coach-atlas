@@ -39,7 +39,7 @@ export const providers: ProviderConfig[] = [
   {
     id: 'bedrock',
     name: 'AWS Bedrock',
-    description: 'Amazon Bedrock API key or credentials',
+    description: 'Amazon Bedrock with Bearer token auth',
     models: [
       // Claude 4.5 (Latest)
       { id: 'anthropic.claude-opus-4-5-20251101-v1:0', name: 'Claude Opus 4.5', description: 'Most capable (Nov 2025)' },
@@ -63,6 +63,7 @@ export const providers: ProviderConfig[] = [
     ],
     fields: [
       { key: 'apiKey', label: 'Bedrock API Key', placeholder: 'Your Bedrock API key', type: 'password' },
+      { key: 'region', label: 'AWS Region', placeholder: 'us-east-1', type: 'text' },
     ],
   },
   {

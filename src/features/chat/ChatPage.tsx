@@ -61,6 +61,7 @@ const Chat = () => {
         provider: storedConfig.provider as ProviderId,
         apiKey: storedConfig.apiKey,
         model: storedConfig.model,
+        region: storedConfig.region,
       });
 
       // Load conversation by ID if provided, otherwise get/create default

@@ -54,6 +54,7 @@ export interface ProviderConfig {
   apiKey: string;
   model: string;
   baseUrl?: string;
+  region?: string; // For AWS Bedrock
 }
 
 export interface ProviderModel {

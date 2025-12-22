@@ -5,21 +5,12 @@
 import type { AIRequest, AIResponse, IAIService, Message, StreamChunk } from "../../types";
 
 export class BedrockAdapter implements IAIService {
-  private parseApiKey(apiKey: string): { token: string; region: string } {
-    // Try to extract region from base64 encoded key
-    try {
-      const decoded = atob(apiKey);
-      // Format: BedrockAPIKey-{region}-{timestamp}:...
-      const match = decoded.match(/BedrockAPIKey-([a-z0-9-]+)-/);
-      if (match) {
-        return { token: apiKey, region: match[1] };
-      }
-    } catch {
-      // Not base64, use as-is
+  private getRegion(config: { apiKey: string; region?: string }): string {
+    // Use explicit region from config
+    if (config.region && config.region.trim()) {
+      return config.region.trim();
     }
-
-    // Default region
-    return { token: apiKey, region: 'us-east-1' };
+    return 'us-east-1';
   }
 
   private formatMessages(messages: Message[], systemPrompt?: string) {
@@ -33,7 +24,7 @@ export class BedrockAdapter implements IAIService {
 
   async sendMessage(request: AIRequest): Promise<AIResponse> {
     const { config, messages, systemPrompt } = request;
-    const { token, region } = this.parseApiKey(config.apiKey);
+    const region = this.getRegion(config);
 
     const body = JSON.stringify({
       anthropic_version: "bedrock-2023-05-31",
@@ -48,7 +39,7 @@ export class BedrockAdapter implements IAIService {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
@@ -79,7 +70,7 @@ export class BedrockAdapter implements IAIService {
 
   async *streamMessage(request: AIRequest): AsyncGenerator<StreamChunk> {
     const { config, messages, systemPrompt } = request;
-    const { token, region } = this.parseApiKey(config.apiKey);
+    const region = this.getRegion(config);
 
     const body = JSON.stringify({
       anthropic_version: "bedrock-2023-05-31",
@@ -94,7 +85,7 @@ export class BedrockAdapter implements IAIService {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },

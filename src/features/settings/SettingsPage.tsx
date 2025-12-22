@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   Check,
   Key,
+  MapPin,
   Shield,
   Sparkles,
   Trash2
@@ -21,6 +22,7 @@ interface StoredConfig {
   provider: string;
   apiKey: string;
   model: string;
+  region?: string;
 }
 
 const Settings = () => {
@@ -30,6 +32,7 @@ const Settings = () => {
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [apiKey, setApiKey] = useState<string>("");
+  const [region, setRegion] = useState<string>("us-east-1");
   const [showApiKey, setShowApiKey] = useState(false);
   const [savedConfig, setSavedConfig] = useState<StoredConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +46,9 @@ const Settings = () => {
         setSelectedProvider(config.provider as Provider);
         setSelectedModel(config.model);
         setApiKey(config.apiKey);
+        if (config.region) {
+          setRegion(config.region);
+        }
       }
     } catch (err) {
       console.error("Failed to load config:", err);
@@ -61,29 +67,34 @@ const Settings = () => {
     setSelectedProvider(providerId);
     setSelectedModel("");
     setApiKey("");
+    setRegion("us-east-1");
     setShowApiKey(false);
   };
 
   const isFormValid = () => {
-    return selectedProvider && selectedModel && apiKey.trim();
+    if (!selectedProvider || !selectedModel || !apiKey.trim()) return false;
+    // Bedrock requires region
+    if (selectedProvider === 'bedrock' && !region.trim()) return false;
+    return true;
   };
 
   const handleSave = async () => {
     if (!selectedProvider || !selectedModel || !apiKey.trim()) return;
 
     try {
-      await storageService.saveProviderConfig({
-        provider: selectedProvider,
-        model: selectedModel,
-        apiKey: apiKey.trim(),
-      });
-
-      const newConfig: StoredConfig = {
+      const configToSave: StoredConfig = {
         provider: selectedProvider,
         model: selectedModel,
         apiKey: apiKey.trim(),
       };
-      setSavedConfig(newConfig);
+
+      // Add region for Bedrock
+      if (selectedProvider === 'bedrock' && region.trim()) {
+        configToSave.region = region.trim();
+      }
+
+      await storageService.saveProviderConfig(configToSave);
+      setSavedConfig(configToSave);
       toast.success("API configuration saved successfully!");
     } catch (err) {
       console.error("Failed to save config:", err);
@@ -96,11 +107,13 @@ const Settings = () => {
       await storageService.deleteSetting("provider");
       await storageService.deleteSetting("apiKey");
       await storageService.deleteSetting("model");
+      await storageService.deleteSetting("region");
 
       setSavedConfig(null);
       setSelectedProvider(null);
       setSelectedModel("");
       setApiKey("");
+      setRegion("us-east-1");
       toast.success("Configuration cleared");
     } catch (err) {
       console.error("Failed to clear config:", err);
@@ -174,6 +187,7 @@ const Settings = () => {
                       .find((p) => p.id === savedConfig.provider)
                       ?.models.find((m) => m.id === savedConfig.model)?.name
                   }
+                  {savedConfig.region && ` • Region: ${savedConfig.region}`}
                 </p>
               </div>
             </div>
@@ -265,9 +279,10 @@ const Settings = () => {
               <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-sm flex items-center justify-center">
                 3
               </span>
-              Enter API Key
+              Enter Credentials
             </h2>
             <div className="space-y-4">
+              {/* API Key Field */}
               <div>
                 <label className="block text-sm font-medium mb-2">
                   {currentProvider.fields[0]?.label || "API Key"}
@@ -289,12 +304,35 @@ const Settings = () => {
                     {showApiKey ? "Hide" : "Show"}
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {currentProvider.id === "bedrock"
-                    ? "Enter your Bedrock API key. Supports base64 encoded keys or AccessKey:SecretKey:Region format."
-                    : "Get your API key from the provider's console."}
-                </p>
               </div>
+
+              {/* Region Field (Bedrock only) */}
+              {currentProvider.id === "bedrock" && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    AWS Region
+                  </label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value)}
+                      placeholder="us-east-1"
+                      className="w-full bg-secondary border border-border rounded-xl pl-10 pr-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Common regions: us-east-1, us-west-2, eu-west-1, ap-northeast-1
+                  </p>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                {currentProvider.id === "bedrock"
+                  ? "Enter your Bedrock API key and the AWS region where you have Bedrock access."
+                  : "Get your API key from the provider's console."}
+              </p>
             </div>
           </div>
         )}
