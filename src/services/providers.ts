@@ -80,22 +80,32 @@ export interface StoredConfig {
   credentials: Record<string, string>;
 }
 
-export const saveConfig = (config: StoredConfig) => {
-  localStorage.setItem('coach-atlas-config', JSON.stringify(config));
+/**
+ * @deprecated Use StorageService.saveProviderConfig() instead.
+ * This function is kept for backward compatibility only.
+ */
+export const saveConfig = (_config: StoredConfig) => {
+  console.warn(
+    "[DEPRECATED] saveConfig() is deprecated. Use StorageService.saveProviderConfig() instead."
+  );
+  // No-op: migration complete to IndexedDB
 };
 
+/**
+ * @deprecated Use StorageService.loadProviderConfig() instead.
+ * This function is kept for backward compatibility only.
+ */
 export const loadConfig = (): StoredConfig | null => {
-  const stored = localStorage.getItem('coach-atlas-config');
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  }
-  return null;
+  console.warn(
+    "[DEPRECATED] loadConfig() is deprecated. Use StorageService.loadProviderConfig() instead."
+  );
+  return null; // Always return null to force IndexedDB usage
 };
 
+/**
+ * @deprecated No longer needed with IndexedDB storage.
+ */
 export const clearConfig = () => {
-  localStorage.removeItem('coach-atlas-config');
+  // Clean up any legacy localStorage data
+  localStorage.removeItem("coach-atlas-config");
 };

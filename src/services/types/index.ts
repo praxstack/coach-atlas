@@ -23,6 +23,8 @@ export interface MessageMetadata {
   provider?: string;
   tokensUsed?: number;
   processingTime?: number;
+  error?: string;
+  partial?: boolean;
 }
 
 // ============================================

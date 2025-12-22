@@ -220,7 +220,37 @@ What brings you here today?`,
       const errorMessage = err instanceof Error ? err.message : "An error occurred";
       setError(errorMessage);
       toast.error(errorMessage);
-      setStreamingContent(""); // Clear streaming on error
+
+      // FIX: Save partial content even on error (don't lose user's generated content!)
+      if (streamingContent.trim()) {
+        try {
+          const partialMessage = await storageService.saveMessage({
+            conversationId: conversation.id,
+            role: "assistant",
+            content: streamingContent + "\n\n---\n*[Response interrupted due to error]*",
+            timestamp: Date.now(),
+            metadata: {
+              model: config.model,
+              provider: config.provider,
+              error: errorMessage,
+              partial: true,
+            },
+          });
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: partialMessage.id,
+              role: "assistant",
+              content: partialMessage.content,
+            },
+          ]);
+        } catch (saveErr) {
+          console.error("Failed to save partial content:", saveErr);
+        }
+      }
+
+      setStreamingContent(""); // Clear streaming after saving
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
