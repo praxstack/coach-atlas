@@ -24,6 +24,13 @@ export class BedrockAdapter implements IAIService {
     const region = this.getRegion(config);
     const modelId = config.model;
 
+    // DEBUG: Log configuration
+    console.log('[Bedrock] ====== SEND MESSAGE ======');
+    console.log('[Bedrock] Region:', region);
+    console.log('[Bedrock] Model ID:', modelId);
+    console.log('[Bedrock] API Key (first 10 chars):', config.apiKey?.substring(0, 10) + '...');
+    console.log('[Bedrock] Messages count:', messages.length);
+
     // Build request body for Anthropic Claude models
     const requestBody = {
       messages: this.formatMessages(messages),
@@ -33,9 +40,13 @@ export class BedrockAdapter implements IAIService {
       ...(systemPrompt && { system: systemPrompt }),
     };
 
+    console.log('[Bedrock] Request body:', JSON.stringify(requestBody, null, 2));
+
     const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
+    console.log('[Bedrock] URL:', url);
 
     try {
+      console.log('[Bedrock] Sending request...');
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -46,8 +57,12 @@ export class BedrockAdapter implements IAIService {
         body: JSON.stringify(requestBody),
       });
 
+      console.log('[Bedrock] Response status:', response.status);
+      console.log('[Bedrock] Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('[Bedrock] ERROR Response:', errorText);
 
         if (response.status === 401) {
           throw new Error('Invalid API key - Authentication failed');
@@ -61,6 +76,7 @@ export class BedrockAdapter implements IAIService {
       }
 
       const json = await response.json();
+      console.log('[Bedrock] SUCCESS Response:', JSON.stringify(json, null, 2));
 
       // Parse Claude response
       const responseText = json.content?.[0]?.text || '';
@@ -88,6 +104,13 @@ export class BedrockAdapter implements IAIService {
     const region = this.getRegion(config);
     const modelId = config.model;
 
+    // DEBUG: Log configuration
+    console.log('[Bedrock] ====== STREAM MESSAGE ======');
+    console.log('[Bedrock] Region:', region);
+    console.log('[Bedrock] Model ID:', modelId);
+    console.log('[Bedrock] API Key (first 10 chars):', config.apiKey?.substring(0, 10) + '...');
+    console.log('[Bedrock] Messages count:', messages.length);
+
     // Build request body for Anthropic Claude models
     const requestBody = {
       messages: this.formatMessages(messages),
@@ -97,10 +120,14 @@ export class BedrockAdapter implements IAIService {
       ...(systemPrompt && { system: systemPrompt }),
     };
 
+    console.log('[Bedrock] Request body:', JSON.stringify(requestBody, null, 2));
+
     // Streaming endpoint
     const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke-with-response-stream`;
+    console.log('[Bedrock] Stream URL:', url);
 
     try {
+      console.log('[Bedrock] Sending stream request...');
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -111,8 +138,12 @@ export class BedrockAdapter implements IAIService {
         body: JSON.stringify(requestBody),
       });
 
+      console.log('[Bedrock] Stream response status:', response.status);
+      console.log('[Bedrock] Stream response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('[Bedrock] STREAM ERROR Response:', errorText);
 
         if (response.status === 401) {
           throw new Error('Invalid API key - Authentication failed');
@@ -125,6 +156,7 @@ export class BedrockAdapter implements IAIService {
         }
       }
 
+      console.log('[Bedrock] Stream response OK, reading body...');
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error("No response body");
