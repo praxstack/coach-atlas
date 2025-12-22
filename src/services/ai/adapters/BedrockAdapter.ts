@@ -10,13 +10,35 @@ export class BedrockAdapter implements IAIService {
     return config.region?.trim() || 'us-east-1';
   }
 
-  private formatMessages(messages: Message[]) {
-    return messages
+  private formatMessages(messages: Message[]): { role: "user" | "assistant"; content: string }[] {
+    const filtered = messages
       .filter(msg => msg.role !== 'system')
-      .map(msg => ({
-        role: msg.role === "assistant" ? "assistant" : "user",
-        content: msg.content
-      }));
+      .filter(msg => msg.content && msg.content.trim().length > 0); // Filter empty messages
+
+    // Claude requires alternating user/assistant messages
+    // Merge consecutive same-role messages
+    const merged: { role: "user" | "assistant"; content: string }[] = [];
+
+    for (const msg of filtered) {
+      const role: "user" | "assistant" = msg.role === "assistant" ? "assistant" : "user";
+
+      if (merged.length === 0) {
+        merged.push({ role, content: msg.content });
+      } else if (merged[merged.length - 1].role === role) {
+        // Same role - merge content
+        merged[merged.length - 1].content += '\n\n' + msg.content;
+      } else {
+        merged.push({ role, content: msg.content });
+      }
+    }
+
+    // Claude requires first message to be from user
+    if (merged.length > 0 && merged[0].role === 'assistant') {
+      merged.shift(); // Remove leading assistant message
+    }
+
+    console.log('[Bedrock] Formatted messages:', merged.length, 'from', filtered.length);
+    return merged;
   }
 
   async sendMessage(request: AIRequest): Promise<AIResponse> {
