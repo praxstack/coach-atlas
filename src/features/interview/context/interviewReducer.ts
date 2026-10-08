@@ -187,8 +187,11 @@ export function interviewReducer(
           : null,
       };
 
-    case "NEXT_PROBLEM":
+    case "NEXT_PROBLEM": {
       if (!state.session) return state;
+      // The countdown derives remaining time from startTime/totalPausedTime,
+      // so restart the clock for the new problem or it would time out at once.
+      const now = Date.now();
       return {
         ...state,
         status: "active",
@@ -196,12 +199,16 @@ export function interviewReducer(
         session: {
           ...state.session,
           status: "active",
+          startTime: now,
+          totalPausedTime: 0,
+          pausedAt: undefined,
           currentProblemIndex: state.session.currentProblemIndex + 1,
           problems: [...state.session.problems, action.problem],
           evaluation: undefined,
-          updatedAt: Date.now(),
+          updatedAt: now,
         },
       };
+    }
 
     case "RESTORE_SESSION": {
       const elapsed = Date.now() - action.session.startTime - action.session.totalPausedTime;

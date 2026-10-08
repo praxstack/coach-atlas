@@ -79,3 +79,25 @@ describe("COA-025 countdown", () => {
     expect(result.current.status).toBe("submitted");
   });
 });
+
+describe("NEXT_PROBLEM restarts the clock (review minor-1)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("does not time out immediately on the next problem", () => {
+    const { result } = renderHook(() => useInterview(), { wrapper });
+    act(() => result.current.confirmSetup(makeSession(Date.now(), 1)));
+    act(() => {
+      vi.advanceTimersByTime(61_000);
+    });
+    expect(result.current.status).toBe("submitted");
+    act(() => result.current.setEvaluation({} as never));
+    expect(result.current.status).toBe("review");
+    act(() => result.current.nextProblem({ id: "p2" } as never));
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(result.current.status).toBe("active");
+    expect(result.current.timer.remainingMs).toBeGreaterThan(55_000);
+  });
+});
