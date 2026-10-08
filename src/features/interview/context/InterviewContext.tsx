@@ -56,7 +56,7 @@ interface InterviewState {
   error: string | null;
 }
 
-const initialState: InterviewState = {
+export const initialState: InterviewState = {
   status: "idle",
   session: null,
   config: null,
@@ -64,11 +64,20 @@ const initialState: InterviewState = {
   error: null,
 };
 
+/** Remaining time derived from wall-clock, excluding accumulated pauses. */
+export function computeRemainingMs(
+  session: Pick<InterviewSession, "startTime" | "totalPausedTime" | "durationMinutes">,
+  now: number
+): number {
+  const elapsed = now - session.startTime - session.totalPausedTime;
+  return Math.max(0, session.durationMinutes * 60 * 1000 - elapsed);
+}
+
 // ============================================
 // Reducer
 // ============================================
 
-function interviewReducer(
+export function interviewReducer(
   state: InterviewState,
   action: InterviewAction
 ): InterviewState {
@@ -172,6 +181,10 @@ function interviewReducer(
       };
 
     case "SET_EVALUATION":
+      // Ignore late results (e.g. evaluation finished after Cancel)
+      if (state.status !== "submitted") {
+        return state;
+      }
       return {
         ...state,
         status: "review",
@@ -374,6 +387,22 @@ export function InterviewProvider({ children }: InterviewProviderProps) {
   const updateRemainingMs = useCallback((ms: number) => {
     dispatch({ type: "TICK", remainingMs: ms });
   }, []);
+
+  // ========== Countdown: drive TICK while active, TIMEOUT at zero ==========
+  const activeSession = state.session;
+  useEffect(() => {
+    if (state.status !== "active" || !activeSession) return;
+    const tick = () => {
+      const remaining = computeRemainingMs(activeSession, Date.now());
+      dispatch({ type: "TICK", remainingMs: remaining });
+      if (remaining <= 0) {
+        dispatch({ type: "TIMEOUT" });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [state.status, activeSession]);
 
   // ========== Auto-resume from pause timeout ==========
   useEffect(() => {

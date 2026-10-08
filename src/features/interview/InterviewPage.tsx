@@ -23,6 +23,7 @@ import {
   InterviewProvider,
   useInterview,
 } from "./context/InterviewContext";
+import { useEvaluateOnSubmit } from "./hooks/useEvaluateOnSubmit";
 import { getInterviewService } from "./services/InterviewService";
 import {
   createProgressiveEvaluator,
@@ -50,10 +51,7 @@ function InterviewContent() {
     startSetup,
     confirmSetup,
     cancel,
-    submit,
-    timeout,
     setEvaluation,
-    updateRemainingMs,
   } = useInterview();
 
   // Local state
@@ -277,10 +275,10 @@ Do NOT:
   };
 
   // Handle interview submission - Uses Progressive Evaluator for fast synthesis
-  const handleSubmit = useCallback(async () => {
+  // Runs once the interview status becomes "submitted" (Finish button or timeout).
+  const runEvaluation = useCallback(async () => {
     if (!config || !session) return;
 
-    submit();
     setIsEvaluating(true);
 
     console.log("[Interview] Starting final synthesis with Progressive Evaluator...");
@@ -360,7 +358,9 @@ Do NOT:
     } finally {
       setIsEvaluating(false);
     }
-  }, [config, session, messages, aiService, submit, setEvaluation]);
+  }, [config, session, messages, aiService, setEvaluation]);
+
+  useEvaluateOnSubmit(status, runEvaluation);
 
   // ============================================
   // Render based on status
