@@ -28,7 +28,7 @@ export type InterviewAction =
   | { type: "USE_HINT" }
   | { type: "TIMEOUT" }
   | { type: "SUBMIT" }
-  | { type: "SET_EVALUATION"; evaluation: EvaluationReport }
+  | { type: "SET_EVALUATION"; evaluation: EvaluationReport; sessionId: string }
   | { type: "NEXT_PROBLEM"; problem: InterviewProblem }
   | { type: "RESTORE_SESSION"; session: InterviewSession }
   | { type: "ADD_MESSAGE_ID"; messageId: string };
@@ -170,8 +170,9 @@ export function interviewReducer(
       };
 
     case "SET_EVALUATION":
-      // Ignore late results (e.g. evaluation finished after Cancel)
-      if (state.status !== "submitted") {
+      // Ignore late results: evaluation finished after Cancel, or it belongs
+      // to an earlier session than the one now awaiting evaluation.
+      if (state.status !== "submitted" || state.session?.id !== action.sessionId) {
         return state;
       }
       return {

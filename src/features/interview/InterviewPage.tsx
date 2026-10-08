@@ -278,6 +278,8 @@ Do NOT:
   // Runs once the interview status becomes "submitted" (Finish button or timeout).
   const runEvaluation = useCallback(async () => {
     if (!config || !session) return;
+    // Tag the result with this session so a late reply cannot land on a newer one.
+    const sessionId = session.id;
 
     setIsEvaluating(true);
 
@@ -295,7 +297,7 @@ Do NOT:
 
         // Fast synthesis - uses pre-computed observations and scores
         const evaluation = await progressiveEvaluatorRef.current.synthesizeFinalReport();
-        setEvaluation(evaluation);
+        setEvaluation(evaluation, sessionId);
         console.log("[Interview] Fast evaluation complete:", evaluation);
       } else {
         // Fallback to old approach if progressive evaluator not available
@@ -306,7 +308,7 @@ Do NOT:
           .map((m) => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content.slice(0, 500)}`)
           .join("\n\n");
         const evaluation = await interviewService.generateEvaluation(session, chatHistory);
-        setEvaluation(evaluation);
+        setEvaluation(evaluation, sessionId);
       }
     } catch (error) {
       console.error("[Interview] Evaluation failed:", error);
@@ -334,7 +336,7 @@ Do NOT:
           },
           generatedAt: Date.now(),
           modelUsed: "fallback-from-observations",
-        });
+        }, sessionId);
       } else {
         setEvaluation({
           overallScore: 3,
@@ -353,7 +355,7 @@ Do NOT:
           },
           generatedAt: Date.now(),
           modelUsed: "fallback",
-        });
+        }, sessionId);
       }
     } finally {
       setIsEvaluating(false);

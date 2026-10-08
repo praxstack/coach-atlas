@@ -7,9 +7,13 @@ import { computeRemainingMs } from "../context/interviewReducer";
 import { useEvaluateOnSubmit } from "../hooks/useEvaluateOnSubmit";
 import type { InterviewSession } from "@/services/types/interview";
 
-function makeSession(startTime: number, durationMinutes = 1): InterviewSession {
+function makeSession(
+  startTime: number,
+  durationMinutes = 1,
+  id = "s1"
+): InterviewSession {
   return {
-    id: "s1",
+    id,
     type: "coding",
     status: "active",
     startTime,
@@ -49,7 +53,7 @@ describe("COA-024 evaluate on submitted", () => {
     act(() => result.current.submit());
     expect(result.current.status).toBe("submitted");
     act(() => result.current.cancel());
-    act(() => result.current.setEvaluation({} as never));
+    act(() => result.current.setEvaluation({} as never, "s1"));
     expect(result.current.status).toBe("idle");
   });
 });
@@ -91,7 +95,7 @@ describe("NEXT_PROBLEM restarts the clock (review minor-1)", () => {
       vi.advanceTimersByTime(61_000);
     });
     expect(result.current.status).toBe("submitted");
-    act(() => result.current.setEvaluation({} as never));
+    act(() => result.current.setEvaluation({} as never, "s1"));
     expect(result.current.status).toBe("review");
     act(() => result.current.nextProblem({ id: "p2" } as never));
     act(() => {
@@ -99,5 +103,25 @@ describe("NEXT_PROBLEM restarts the clock (review minor-1)", () => {
     });
     expect(result.current.status).toBe("active");
     expect(result.current.timer.remainingMs).toBeGreaterThan(55_000);
+  });
+});
+
+describe("SET_EVALUATION is scoped to its session (review minor-2)", () => {
+  it("drops a stale result from a previous session and applies the current one", () => {
+    const { result } = renderHook(() => useInterview(), { wrapper });
+    act(() => result.current.confirmSetup(makeSession(Date.now(), 45, "old")));
+    act(() => result.current.submit());
+    act(() => result.current.cancel());
+    act(() => result.current.confirmSetup(makeSession(Date.now(), 45, "new")));
+    act(() => result.current.submit());
+    expect(result.current.status).toBe("submitted");
+
+    act(() => result.current.setEvaluation({ modelUsed: "OLD" } as never, "old"));
+    expect(result.current.status).toBe("submitted");
+    expect(result.current.session?.evaluation).toBeUndefined();
+
+    act(() => result.current.setEvaluation({ modelUsed: "NEW" } as never, "new"));
+    expect(result.current.status).toBe("review");
+    expect(result.current.session?.evaluation?.modelUsed).toBe("NEW");
   });
 });

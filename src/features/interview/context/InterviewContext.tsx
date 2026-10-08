@@ -75,7 +75,8 @@ interface InterviewContextValue {
   submit: () => void;
   timeout: () => void;
   useHint: () => void;
-  setEvaluation: (evaluation: EvaluationReport) => void;
+  /** Applies only if `sessionId` is the session currently awaiting evaluation. */
+  setEvaluation: (evaluation: EvaluationReport, sessionId: string) => void;
   nextProblem: (problem: InterviewProblem) => void;
   restoreSession: (session: InterviewSession) => void;
   addMessageId: (messageId: string) => void;
@@ -158,9 +159,12 @@ export function InterviewProvider({ children }: InterviewProviderProps) {
     dispatch({ type: "USE_HINT" });
   }, []);
 
-  const setEvaluation = useCallback((evaluation: EvaluationReport) => {
-    dispatch({ type: "SET_EVALUATION", evaluation });
-  }, []);
+  const setEvaluation = useCallback(
+    (evaluation: EvaluationReport, sessionId: string) => {
+      dispatch({ type: "SET_EVALUATION", evaluation, sessionId });
+    },
+    []
+  );
 
   const nextProblem = useCallback((problem: InterviewProblem) => {
     dispatch({ type: "NEXT_PROBLEM", problem });
