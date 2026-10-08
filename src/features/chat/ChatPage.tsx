@@ -143,6 +143,12 @@ const Chat = () => {
     }
   }, [navigate, storageService, urlConversationId]);
 
+  // Abort an in-flight stream when the page unmounts or switches conversation,
+  // so its request stops and its reply cannot land in another conversation.
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort();
+  }, [urlConversationId]);
+
   useEffect(() => {
     // Reset state when conversation changes
     setMessages([]);
@@ -166,8 +172,11 @@ const Chat = () => {
     setError(null);
     setStreamingContent("");
 
-    // Create abort controller for cancellation
-    abortControllerRef.current = new AbortController();
+    // One controller per stream; a newer send supersedes an older stream.
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const { signal } = controller;
 
     try {
       // 1. Save user message to IndexedDB
@@ -192,12 +201,20 @@ const Chat = () => {
       // 4. Stream response from AIService with persona system prompt
       let fullContent = "";
 
-      for await (const chunk of aiService.streamChat(userContent, historyMessages, config, persona.systemPrompt)) {
-        if (chunk.done) break;
+      for await (const chunk of aiService.streamChat(
+        userContent,
+        historyMessages,
+        config,
+        persona.systemPrompt,
+        signal
+      )) {
+        if (signal.aborted || chunk.done) break;
 
         fullContent += chunk.content;
         setStreamingContent(fullContent);
       }
+      // Cancelled (unmount, conversation switch, superseded): drop the reply quietly.
+      if (signal.aborted) return;
 
       // 5. Save complete assistant response to IndexedDB
       const assistantMessage = await storageService.saveMessage({
@@ -222,6 +239,8 @@ const Chat = () => {
         },
       ]);
     } catch (err) {
+      // A cancel is not a failure: no error, no toast, no partial message saved.
+      if (signal.aborted) return;
       const errorMessage = err instanceof Error ? err.message : "An error occurred";
       setError(errorMessage);
       toast.error(errorMessage);
@@ -257,8 +276,12 @@ const Chat = () => {
 
       setStreamingContent(""); // Clear streaming after saving
     } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
+      // A superseding send owns the loading state and the ref from here on.
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setIsLoading(false);
+        if (signal.aborted) setStreamingContent("");
+      }
     }
   };
 

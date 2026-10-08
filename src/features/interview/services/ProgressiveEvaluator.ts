@@ -124,15 +124,18 @@ class AsyncMutex {
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
-  baseDelayMs: number = 1000
+  baseDelayMs: number = 1000,
+  signal?: AbortSignal
 ): Promise<T> {
   let lastError: Error | unknown;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    signal?.throwIfAborted();
     try {
       return await fn();
     } catch (error) {
       lastError = error;
+      if (signal?.aborted) throw error;
       if (attempt < maxRetries) {
         const delay = baseDelayMs * Math.pow(2, attempt);
         console.warn(`[ProgressiveEvaluator] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`, error);
@@ -240,6 +243,10 @@ export class ProgressiveEvaluator {
   // Mutex lock for thread safety
   private evaluationMutex = new AsyncMutex();
   private pendingEvaluation = false;
+
+  // Aborted when the final synthesis is cancelled, so queued or in-flight
+  // background micro-evaluations stop too.
+  private backgroundController = new AbortController();
 
   // Persistence callback
   private onStateUpdate?: OnStateUpdateCallback;
@@ -367,16 +374,20 @@ export class ProgressiveEvaluator {
    * Ensures only one evaluation runs at a time
    */
   private async triggerBackgroundEvaluation(): Promise<void> {
+    const signal = this.backgroundController.signal;
+    if (signal.aborted) return;
     // Use mutex to prevent concurrent evaluations
     await this.evaluationMutex.withLock(async () => {
+      if (signal.aborted) return;
       console.log("[ProgressiveEvaluator] Starting background micro-evaluation...");
 
       try {
         // Retry with exponential backoff
         await retryWithBackoff(
-          () => this.runMicroEvaluation(),
+          () => this.runMicroEvaluation(signal),
           this.MAX_RETRIES,
-          1000
+          1000,
+          signal
         );
       } catch (error) {
         console.error("[ProgressiveEvaluator] Micro-evaluation failed after retries:", error);
@@ -387,7 +398,7 @@ export class ProgressiveEvaluator {
 
     // Check if another evaluation was requested while we were running
     const unevaluated = this.exchanges.length - 1 - this.state.lastEvaluatedIndex;
-    if (unevaluated >= this.EXCHANGES_PER_EVALUATION) {
+    if (!signal.aborted && unevaluated >= this.EXCHANGES_PER_EVALUATION) {
       // Schedule next evaluation with delay
       setTimeout(() => this.triggerBackgroundEvaluation(), 500);
     }
@@ -396,7 +407,7 @@ export class ProgressiveEvaluator {
   /**
    * Run a micro-evaluation on recent exchanges
    */
-  private async runMicroEvaluation(): Promise<void> {
+  private async runMicroEvaluation(signal?: AbortSignal): Promise<void> {
     const startIndex = this.state.lastEvaluatedIndex + 1;
     const endIndex = this.exchanges.length - 1;
 
@@ -439,7 +450,9 @@ export class ProgressiveEvaluator {
         },
       ],
       config: this.config,
+      signal,
     });
+    signal?.throwIfAborted();
 
     // Parse response
     const result = this.parseMicroEvaluation(response.content);
@@ -522,17 +535,29 @@ export class ProgressiveEvaluator {
    * Synthesize final evaluation report
    * This is FAST because we've already done the heavy lifting
    */
-  async synthesizeFinalReport(): Promise<EvaluationReport> {
+  async synthesizeFinalReport(signal?: AbortSignal): Promise<EvaluationReport> {
     console.log("[ProgressiveEvaluator] Synthesizing final report...");
 
-    // Ensure all exchanges are evaluated
-    if (this.state.lastEvaluatedIndex < this.exchanges.length - 1) {
+    // Cancelling the evaluation also stops background micro-evaluation work.
+    const stopBackground = () => this.backgroundController.abort(signal?.reason);
+    if (signal?.aborted) stopBackground();
+    signal?.addEventListener("abort", stopBackground, { once: true });
+    signal?.throwIfAborted();
+
+    // Ensure all exchanges are evaluated. Take the same lock as the background
+    // micro-evaluation so an in-flight one finishes first and its range is not
+    // evaluated (and its score deltas applied) a second time.
+    await this.evaluationMutex.withLock(async () => {
+      signal?.throwIfAborted();
+      if (this.state.lastEvaluatedIndex >= this.exchanges.length - 1) return;
       try {
-        await this.runMicroEvaluation();
+        await this.runMicroEvaluation(signal);
       } catch (error) {
+        if (signal?.aborted) throw error;
         console.warn("[ProgressiveEvaluator] Final micro-eval failed, using current state");
       }
-    }
+    });
+    signal?.throwIfAborted();
 
     const durationMinutes = Math.floor((Date.now() - this.state.startTime) / 60000);
 
@@ -573,10 +598,13 @@ export class ProgressiveEvaluator {
           },
         ],
         config: this.config,
+        signal,
       });
+      signal?.throwIfAborted();
 
       return this.parseFinalEvaluation(response.content);
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.error("[ProgressiveEvaluator] Synthesis failed:", error);
       return this.buildFallbackEvaluation();
     }

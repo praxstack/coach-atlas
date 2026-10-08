@@ -60,6 +60,7 @@ export class AnthropicAdapter {
         system: systemPrompt,
         messages: this.formatMessages(messages),
       }),
+      signal: request.signal,
     });
 
     if (!response.ok) {
@@ -105,6 +106,7 @@ export class AnthropicAdapter {
         messages: this.formatMessages(messages),
         stream: true, // Enable streaming
       }),
+      signal: request.signal,
     });
 
     if (!response.ok) {

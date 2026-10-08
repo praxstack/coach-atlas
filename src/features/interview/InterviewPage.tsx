@@ -23,6 +23,7 @@ import {
   InterviewProvider,
   useInterview,
 } from "./context/InterviewContext";
+import { useEvaluateOnSubmit } from "./hooks/useEvaluateOnSubmit";
 import { getInterviewService } from "./services/InterviewService";
 import {
   createProgressiveEvaluator,
@@ -50,10 +51,7 @@ function InterviewContent() {
     startSetup,
     confirmSetup,
     cancel,
-    submit,
-    timeout,
     setEvaluation,
-    updateRemainingMs,
   } = useInterview();
 
   // Local state
@@ -72,6 +70,13 @@ function InterviewContent() {
 
   // Progressive evaluator instance
   const progressiveEvaluatorRef = useRef<ProgressiveEvaluator | null>(null);
+
+  // Settles when the in-flight chat exchange has been recorded (or failed), so
+  // final evaluation can include an answer sent just before Finish or timeout.
+  const pendingExchangeRef = useRef<Promise<void> | null>(null);
+  // The interviewer stream in flight; aborted on unmount or when superseded.
+  const streamControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => streamControllerRef.current?.abort(), []);
 
   // Persisted evaluation state (survives page refresh)
   const [persistedEvalState, setPersistedEvalState] = useState<SerializableEvaluationState | null>(null);
@@ -194,6 +199,12 @@ function InterviewContent() {
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
+    streamControllerRef.current?.abort();
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
+    const { signal } = controller;
+    let settleExchange!: () => void;
+    pendingExchangeRef.current = new Promise<void>((resolve) => (settleExchange = resolve));
 
     try {
       // Add user message
@@ -247,12 +258,15 @@ Do NOT:
         userContent,
         historyMessages,
         config,
-        interviewerPrompt
+        interviewerPrompt,
+        signal
       )) {
-        if (chunk.done) break;
+        if (signal.aborted || chunk.done) break;
         fullContent += chunk.content;
         setStreamingContent(fullContent);
       }
+      // Cancelled (unmount or superseded): no reply, no recorded exchange.
+      if (signal.aborted) return;
 
       // Add assistant message
       setStreamingContent("");
@@ -270,22 +284,34 @@ Do NOT:
         });
       }
     } catch (error) {
-      toast.error(`Error: ${error}`);
+      // A cancel is not a failure: no error toast.
+      if (!signal.aborted) toast.error(`Error: ${error}`);
     } finally {
-      setIsLoading(false);
+      if (streamControllerRef.current === controller) {
+        streamControllerRef.current = null;
+        setIsLoading(false);
+        if (signal.aborted) setStreamingContent("");
+      }
+      settleExchange();
     }
   };
 
   // Handle interview submission - Uses Progressive Evaluator for fast synthesis
-  const handleSubmit = useCallback(async () => {
+  // Runs once the interview status becomes "submitted" (Finish button or timeout).
+  // The signal is aborted when the user cancels or leaves the page.
+  const runEvaluation = useCallback(async (signal: AbortSignal) => {
     if (!config || !session) return;
+    // Tag the result with this session so a late reply cannot land on a newer one.
+    const sessionId = session.id;
 
-    submit();
     setIsEvaluating(true);
 
-    console.log("[Interview] Starting final synthesis with Progressive Evaluator...");
-
     try {
+      // Let an answer that is still streaming reach the evaluator first.
+      await pendingExchangeRef.current;
+      if (signal.aborted) return;
+      console.log("[Interview] Starting final synthesis with Progressive Evaluator...");
+
       // Use Progressive Evaluator for fast synthesis
       if (progressiveEvaluatorRef.current) {
         const state = progressiveEvaluatorRef.current.getState();
@@ -296,8 +322,8 @@ Do NOT:
         });
 
         // Fast synthesis - uses pre-computed observations and scores
-        const evaluation = await progressiveEvaluatorRef.current.synthesizeFinalReport();
-        setEvaluation(evaluation);
+        const evaluation = await progressiveEvaluatorRef.current.synthesizeFinalReport(signal);
+        setEvaluation(evaluation, sessionId);
         console.log("[Interview] Fast evaluation complete:", evaluation);
       } else {
         // Fallback to old approach if progressive evaluator not available
@@ -308,9 +334,11 @@ Do NOT:
           .map((m) => `${m.role === "user" ? "Candidate" : "Interviewer"}: ${m.content.slice(0, 500)}`)
           .join("\n\n");
         const evaluation = await interviewService.generateEvaluation(session, chatHistory);
-        setEvaluation(evaluation);
+        setEvaluation(evaluation, sessionId);
       }
     } catch (error) {
+      // Cancelled by the user: no fallback report and no error toast.
+      if (signal.aborted) return;
       console.error("[Interview] Evaluation failed:", error);
       toast.error("Evaluation failed. Using fallback report.");
 
@@ -336,7 +364,7 @@ Do NOT:
           },
           generatedAt: Date.now(),
           modelUsed: "fallback-from-observations",
-        });
+        }, sessionId);
       } else {
         setEvaluation({
           overallScore: 3,
@@ -355,12 +383,14 @@ Do NOT:
           },
           generatedAt: Date.now(),
           modelUsed: "fallback",
-        });
+        }, sessionId);
       }
     } finally {
       setIsEvaluating(false);
     }
-  }, [config, session, messages, aiService, submit, setEvaluation]);
+  }, [config, session, messages, aiService, setEvaluation]);
+
+  useEvaluateOnSubmit(status, runEvaluation);
 
   // ============================================
   // Render based on status
