@@ -283,7 +283,8 @@ Do NOT:
 
   // Handle interview submission - Uses Progressive Evaluator for fast synthesis
   // Runs once the interview status becomes "submitted" (Finish button or timeout).
-  const runEvaluation = useCallback(async () => {
+  // The signal is aborted when the user cancels or leaves the page.
+  const runEvaluation = useCallback(async (signal: AbortSignal) => {
     if (!config || !session) return;
     // Tag the result with this session so a late reply cannot land on a newer one.
     const sessionId = session.id;
@@ -293,6 +294,7 @@ Do NOT:
     try {
       // Let an answer that is still streaming reach the evaluator first.
       await pendingExchangeRef.current;
+      if (signal.aborted) return;
       console.log("[Interview] Starting final synthesis with Progressive Evaluator...");
 
       // Use Progressive Evaluator for fast synthesis
@@ -305,7 +307,7 @@ Do NOT:
         });
 
         // Fast synthesis - uses pre-computed observations and scores
-        const evaluation = await progressiveEvaluatorRef.current.synthesizeFinalReport();
+        const evaluation = await progressiveEvaluatorRef.current.synthesizeFinalReport(signal);
         setEvaluation(evaluation, sessionId);
         console.log("[Interview] Fast evaluation complete:", evaluation);
       } else {
@@ -320,6 +322,8 @@ Do NOT:
         setEvaluation(evaluation, sessionId);
       }
     } catch (error) {
+      // Cancelled by the user: no fallback report and no error toast.
+      if (signal.aborted) return;
       console.error("[Interview] Evaluation failed:", error);
       toast.error("Evaluation failed. Using fallback report.");
 

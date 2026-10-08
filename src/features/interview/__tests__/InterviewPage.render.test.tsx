@@ -177,4 +177,26 @@ describe("InterviewPage runs the evaluation (COA-024/025 wiring)", () => {
       synthesizeFinalReport.mock.invocationCallOrder[0]
     );
   });
+
+  it("Cancel & Return aborts the in-flight evaluation", async () => {
+    let seen: AbortSignal | undefined;
+    synthesizeFinalReport.mockImplementation(
+      (signal?: AbortSignal) =>
+        new Promise((_, reject) => {
+          seen = signal;
+          signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        })
+    );
+    renderPage();
+    await startInterview();
+
+    fireEvent.click(await screen.findByText("Finish"));
+    await waitFor(() => expect(synthesizeFinalReport).toHaveBeenCalledTimes(1));
+    expect(seen?.aborted).toBe(false);
+
+    fireEvent.click(screen.getByText("Cancel & Return"));
+    expect(seen?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText(/evaluation from/)).toBeNull();
+  });
 });

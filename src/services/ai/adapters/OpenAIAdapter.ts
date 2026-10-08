@@ -121,6 +121,7 @@ export class OpenAIAdapter {
         messages: this.formatMessages(messages, systemPrompt, config.model),
         ...this.tokenLimitParam(config.model, maxTokens),
       }),
+      signal: request.signal,
     });
 
     if (!response.ok) {

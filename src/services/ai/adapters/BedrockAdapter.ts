@@ -68,6 +68,9 @@ export class BedrockAdapter implements IAIService {
       console.warn('[Bedrock] Request timeout after 45 seconds');
       controller.abort();
     }, 45000);
+    // Also abort when the caller cancels (e.g. the user cancels an evaluation).
+    if (request.signal?.aborted) controller.abort();
+    request.signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
     try {
       const response = await fetch(url, {

@@ -54,4 +54,44 @@ describe("ProgressiveEvaluator final synthesis", () => {
     expect(evaluator.getState().scores.coding).toBe(3.5);
     expect(evaluator.getObservations()).toHaveLength(1);
   });
+
+  it("stops without sending more requests once the caller aborts", async () => {
+    const { ai, sendMessage, flush } = deferredAI();
+    const evaluator = new ProgressiveEvaluator(ai, config, problem);
+    await evaluator.onMessageExchange("u0", "a0");
+
+    const controller = new AbortController();
+    const report = evaluator.synthesizeFinalReport(controller.signal);
+    await new Promise((r) => setTimeout(r, 0));
+    // The remaining micro-eval was sent with the caller's signal.
+    expect(sendMessage.mock.calls[0][0].signal).toBe(controller.signal);
+
+    controller.abort();
+    const settled = report.then(
+      () => "resolved",
+      (e: Error) => e.name
+    );
+    await flush();
+
+    expect(await settled).toBe("AbortError");
+    expect(sendMessage.mock.calls.filter(([r]) => !isMicro(r))).toHaveLength(0);
+  });
+
+  it("aborting the final synthesis also aborts background micro-evaluation", async () => {
+    const { ai, sendMessage, flush } = deferredAI();
+    const evaluator = new ProgressiveEvaluator(ai, config, problem);
+    await evaluator.onMessageExchange("u0", "a0");
+    await evaluator.onMessageExchange("u1", "a1"); // background micro-eval in flight
+    const background = sendMessage.mock.calls[0][0].signal;
+    expect(background?.aborted).toBe(false);
+
+    const controller = new AbortController();
+    const report = evaluator.synthesizeFinalReport(controller.signal).catch((e: Error) => e.name);
+    controller.abort();
+    expect(background?.aborted).toBe(true);
+    await flush();
+
+    expect(await report).toBe("AbortError");
+    expect(sendMessage.mock.calls.filter(([r]) => !isMicro(r))).toHaveLength(0);
+  });
 });

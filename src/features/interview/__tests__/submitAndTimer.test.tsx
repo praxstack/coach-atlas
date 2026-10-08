@@ -47,6 +47,23 @@ describe("COA-024 evaluate on submitted", () => {
     expect(evaluate).toHaveBeenCalledTimes(2);
   });
 
+  it("aborts the evaluation when status leaves submitted or the page unmounts", () => {
+    const signals: AbortSignal[] = [];
+    const evaluate = vi.fn((signal: AbortSignal) => {
+      signals.push(signal);
+    });
+    const { rerender, unmount } = renderHook(({ s }) => useEvaluateOnSubmit(s, evaluate), {
+      initialProps: { s: "submitted" },
+    });
+    expect(signals[0].aborted).toBe(false);
+    rerender({ s: "idle" }); // Cancel & Return
+    expect(signals[0].aborted).toBe(true);
+    rerender({ s: "submitted" });
+    expect(signals[1].aborted).toBe(false);
+    unmount();
+    expect(signals[1].aborted).toBe(true);
+  });
+
   it("ignores a late evaluation after cancel", () => {
     const { result } = renderHook(() => useInterview(), { wrapper });
     act(() => result.current.confirmSetup(makeSession(Date.now(), 45)));

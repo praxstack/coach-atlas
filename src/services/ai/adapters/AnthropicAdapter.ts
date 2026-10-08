@@ -60,6 +60,7 @@ export class AnthropicAdapter {
         system: systemPrompt,
         messages: this.formatMessages(messages),
       }),
+      signal: request.signal,
     });
 
     if (!response.ok) {
