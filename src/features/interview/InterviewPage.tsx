@@ -74,6 +74,9 @@ function InterviewContent() {
   // Settles when the in-flight chat exchange has been recorded (or failed), so
   // final evaluation can include an answer sent just before Finish or timeout.
   const pendingExchangeRef = useRef<Promise<void> | null>(null);
+  // The interviewer stream in flight; aborted on unmount or when superseded.
+  const streamControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => streamControllerRef.current?.abort(), []);
 
   // Persisted evaluation state (survives page refresh)
   const [persistedEvalState, setPersistedEvalState] = useState<SerializableEvaluationState | null>(null);
@@ -196,6 +199,10 @@ function InterviewContent() {
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
+    streamControllerRef.current?.abort();
+    const controller = new AbortController();
+    streamControllerRef.current = controller;
+    const { signal } = controller;
     let settleExchange!: () => void;
     pendingExchangeRef.current = new Promise<void>((resolve) => (settleExchange = resolve));
 
@@ -251,12 +258,15 @@ Do NOT:
         userContent,
         historyMessages,
         config,
-        interviewerPrompt
+        interviewerPrompt,
+        signal
       )) {
-        if (chunk.done) break;
+        if (signal.aborted || chunk.done) break;
         fullContent += chunk.content;
         setStreamingContent(fullContent);
       }
+      // Cancelled (unmount or superseded): no reply, no recorded exchange.
+      if (signal.aborted) return;
 
       // Add assistant message
       setStreamingContent("");
@@ -274,9 +284,14 @@ Do NOT:
         });
       }
     } catch (error) {
-      toast.error(`Error: ${error}`);
+      // A cancel is not a failure: no error toast.
+      if (!signal.aborted) toast.error(`Error: ${error}`);
     } finally {
-      setIsLoading(false);
+      if (streamControllerRef.current === controller) {
+        streamControllerRef.current = null;
+        setIsLoading(false);
+        if (signal.aborted) setStreamingContent("");
+      }
       settleExchange();
     }
   };

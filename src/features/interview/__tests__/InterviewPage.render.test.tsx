@@ -8,6 +8,9 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InterviewConfig, InterviewProblem, InterviewSession } from "@/services/types/interview";
 
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast: { error: toastError, success: vi.fn(), info: vi.fn() } }));
+
 const synthesizeFinalReport = vi.fn();
 const onMessageExchange = vi.fn(async () => {});
 let sessionStartOffsetMs = 0;
@@ -113,6 +116,7 @@ beforeEach(() => {
   sessionStartOffsetMs = 0;
   synthesizeFinalReport.mockReset();
   onMessageExchange.mockClear();
+  toastError.mockClear();
   services.ai.streamChat = () => {};
   synthesizeFinalReport.mockResolvedValue({
     overallScore: 4,
@@ -198,5 +202,31 @@ describe("InterviewPage runs the evaluation (COA-024/025 wiring)", () => {
     expect(seen?.aborted).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByText(/evaluation from/)).toBeNull();
+  });
+
+  it("unmount during an interviewer stream aborts it quietly", async () => {
+    let seen: AbortSignal | undefined;
+    services.ai.streamChat = async function* (...args: unknown[]) {
+      const signal = args[4] as AbortSignal | undefined;
+      seen = signal;
+      yield { content: "partial reply", done: false };
+      await new Promise((_, reject) =>
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+      );
+    };
+    const { unmount } = renderPage();
+    await startInterview();
+
+    const input = await screen.findByPlaceholderText("Explain your approach...");
+    fireEvent.change(input, { target: { value: "my answer" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByText("partial reply");
+    expect(seen?.aborted).toBe(false);
+
+    unmount();
+    expect(seen?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(toastError).not.toHaveBeenCalled();
+    expect(onMessageExchange).not.toHaveBeenCalled();
   });
 });
