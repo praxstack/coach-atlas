@@ -106,6 +106,7 @@ export class AnthropicAdapter {
         messages: this.formatMessages(messages),
         stream: true, // Enable streaming
       }),
+      signal: request.signal,
     });
 
     if (!response.ok) {

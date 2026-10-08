@@ -156,6 +156,7 @@ export class BedrockAdapter implements IAIService {
           'Accept': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: request.signal,
       });
 
       if (!response.ok) {

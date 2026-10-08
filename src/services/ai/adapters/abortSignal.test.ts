@@ -1,9 +1,10 @@
 /**
- * Every adapter's sendMessage must hand the caller's AbortSignal to fetch, so
- * cancelling an interview evaluation stops the provider request.
+ * Every adapter's sendMessage and streamMessage must hand the caller's
+ * AbortSignal to fetch, so cancelling stops the provider request.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AIRequest, ProviderConfig, ProviderId } from "../../types";
+import { AIService } from "../AIService";
 import { AnthropicAdapter } from "./AnthropicAdapter";
 import { BedrockAdapter } from "./BedrockAdapter";
 import { GoogleAdapter } from "./GoogleAdapter";
@@ -53,5 +54,30 @@ describe("sendMessage forwards the abort signal", () => {
     expect(seen()?.aborted).toBe(false);
     controller.abort();
     expect(seen()?.aborted).toBe(true);
+  });
+});
+
+describe("streamMessage forwards the abort signal", () => {
+  it.each([
+    ["openai", new OpenAIAdapter(), "gpt-4o"],
+    ["anthropic", new AnthropicAdapter(), "claude-3-5-sonnet-20241022"],
+    ["google", new GoogleAdapter(), "gemini-1.5-pro"],
+    ["bedrock", new BedrockAdapter(), "anthropic.claude-3-haiku-20240307-v1:0"],
+  ] as const)("%s", async (provider, adapter, model) => {
+    const seen = captureFetchSignal();
+    const controller = new AbortController();
+    await adapter.streamMessage(request(provider, model, controller.signal)).next().catch(() => {});
+    expect(seen()).toBe(controller.signal);
+  });
+
+  it("AIService.streamChat passes its signal to the adapter", async () => {
+    const seen = captureFetchSignal();
+    const controller = new AbortController();
+    const config: ProviderConfig = { provider: "openai", model: "gpt-4o", apiKey: "test-key" };
+    await new AIService()
+      .streamChat("hi", [], config, undefined, controller.signal)
+      .next()
+      .catch(() => {});
+    expect(seen()).toBe(controller.signal);
   });
 });

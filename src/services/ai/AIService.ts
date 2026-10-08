@@ -126,12 +126,14 @@ export class AIService implements IAIService {
    * Uses ContextManager to fit within token limits
    * Yields chunks as they arrive from the API
    * @param customSystemPrompt - Optional custom system prompt for persona support
+   * @param signal - Optional AbortSignal; aborting it cancels the provider request and stream
    */
   async *streamChat(
     userMessage: string,
     conversationHistory: Message[],
     config: ProviderConfig,
-    customSystemPrompt?: string
+    customSystemPrompt?: string,
+    signal?: AbortSignal
   ): AsyncGenerator<StreamChunk> {
     // Use custom system prompt if provided, otherwise default
     const systemPrompt = customSystemPrompt || SYSTEM_PROMPT;
@@ -155,6 +157,7 @@ export class AIService implements IAIService {
       messages: contextMessages,
       config,
       systemPrompt,
+      signal,
     };
 
     // Route to the appropriate adapter's stream method

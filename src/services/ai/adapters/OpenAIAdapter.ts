@@ -171,6 +171,7 @@ export class OpenAIAdapter {
         ...this.tokenLimitParam(config.model, maxTokens),
         stream: true, // Enable streaming
       }),
+      signal: request.signal,
     });
 
     if (!response.ok) {
