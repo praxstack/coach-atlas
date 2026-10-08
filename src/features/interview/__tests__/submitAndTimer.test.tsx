@@ -2,11 +2,8 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { createElement } from "react";
-import {
-  InterviewProvider,
-  computeRemainingMs,
-  useInterview,
-} from "../context/InterviewContext";
+import { InterviewProvider, useInterview } from "../context/InterviewContext";
+import { computeRemainingMs } from "../context/interviewReducer";
 import { useEvaluateOnSubmit } from "../hooks/useEvaluateOnSubmit";
 import type { InterviewSession } from "@/services/types/interview";
 
