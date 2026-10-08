@@ -52,8 +52,25 @@ const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   "mistral.mistral-large-2407-v1:0": 128000,
 };
 
-// Default context limit if model not found
-const DEFAULT_CONTEXT_LIMIT = 8000;
+/**
+ * Pattern fallbacks for model ids that are not in the exact table
+ * (dated snapshots, new minor versions, Bedrock/regional prefixes).
+ * First match wins, so order specific patterns before general ones.
+ */
+const MODEL_CONTEXT_PATTERNS: Array<[RegExp, number]> = [
+  [/^gpt-4(?!o|\.|-turbo)(-\d{4})?$/, 8192],
+  [/gpt-3\.5/, 16385],
+  [/gpt-(5|4\.1|4o|4-turbo)|(^|[^a-z])o[1-9]/, 128000],
+  [/claude/, 200000],
+  [/gemini-(1\.5|2|3)/, 1000000],
+  [/gemini/, 32000],
+  [/titan-text-premier/, 32000],
+  [/titan-text-express/, 8192],
+  [/llama3|mistral-large/, 128000],
+];
+
+// Default context limit if model not found (modern models all exceed this)
+const DEFAULT_CONTEXT_LIMIT = 32000;
 
 // Safety buffer: reserve tokens for response generation
 const OUTPUT_TOKEN_RESERVE = 4096;
@@ -85,7 +102,13 @@ export function estimateMessageTokens(message: Message): number {
  * Get the context limit for a model
  */
 export function getContextLimit(model: string): number {
-  return MODEL_CONTEXT_LIMITS[model] || DEFAULT_CONTEXT_LIMIT;
+  const exact = MODEL_CONTEXT_LIMITS[model];
+  if (exact) return exact;
+  const id = (model || "").toLowerCase();
+  for (const [pattern, limit] of MODEL_CONTEXT_PATTERNS) {
+    if (pattern.test(id)) return limit;
+  }
+  return DEFAULT_CONTEXT_LIMIT;
 }
 
 /**
