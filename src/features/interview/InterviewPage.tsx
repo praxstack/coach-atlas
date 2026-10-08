@@ -71,6 +71,10 @@ function InterviewContent() {
   // Progressive evaluator instance
   const progressiveEvaluatorRef = useRef<ProgressiveEvaluator | null>(null);
 
+  // Settles when the in-flight chat exchange has been recorded (or failed), so
+  // final evaluation can include an answer sent just before Finish or timeout.
+  const pendingExchangeRef = useRef<Promise<void> | null>(null);
+
   // Persisted evaluation state (survives page refresh)
   const [persistedEvalState, setPersistedEvalState] = useState<SerializableEvaluationState | null>(null);
 
@@ -192,6 +196,8 @@ function InterviewContent() {
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
+    let settleExchange!: () => void;
+    pendingExchangeRef.current = new Promise<void>((resolve) => (settleExchange = resolve));
 
     try {
       // Add user message
@@ -271,6 +277,7 @@ Do NOT:
       toast.error(`Error: ${error}`);
     } finally {
       setIsLoading(false);
+      settleExchange();
     }
   };
 
@@ -283,9 +290,11 @@ Do NOT:
 
     setIsEvaluating(true);
 
-    console.log("[Interview] Starting final synthesis with Progressive Evaluator...");
-
     try {
+      // Let an answer that is still streaming reach the evaluator first.
+      await pendingExchangeRef.current;
+      console.log("[Interview] Starting final synthesis with Progressive Evaluator...");
+
       // Use Progressive Evaluator for fast synthesis
       if (progressiveEvaluatorRef.current) {
         const state = progressiveEvaluatorRef.current.getState();

@@ -9,11 +9,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { InterviewConfig, InterviewProblem, InterviewSession } from "@/services/types/interview";
 
 const synthesizeFinalReport = vi.fn();
+const onMessageExchange = vi.fn(async () => {});
 let sessionStartOffsetMs = 0;
 
 // Stable service objects: the page reloads config whenever the service identity changes.
 const services = vi.hoisted(() => ({
-  ai: { streamChat: () => {} },
+  ai: { streamChat: (() => {}) as (...args: unknown[]) => unknown },
   storage: {
     loadProviderConfig: async () => ({ provider: "openai", apiKey: "test-key", model: "gpt-4o" }),
   },
@@ -85,7 +86,7 @@ vi.mock("../services/ProgressiveEvaluator", () => ({
       scores: { problemSolving: 3, coding: 3, communication: 3, verification: 3, timeManagement: 3 },
     }),
     synthesizeFinalReport,
-    onMessageExchange: vi.fn(async () => {}),
+    onMessageExchange,
   }),
 }));
 
@@ -111,6 +112,8 @@ beforeEach(() => {
   localStorage.clear();
   sessionStartOffsetMs = 0;
   synthesizeFinalReport.mockReset();
+  onMessageExchange.mockClear();
+  services.ai.streamChat = () => {};
   synthesizeFinalReport.mockResolvedValue({
     overallScore: 4,
     dimensions: { problemSolving: 4, coding: 4, communication: 4, verification: 4, timeManagement: 4 },
@@ -144,5 +147,34 @@ describe("InterviewPage runs the evaluation (COA-024/025 wiring)", () => {
     expect(await screen.findByText("evaluation from test-model")).toBeTruthy();
     await waitFor(() => expect(synthesizeFinalReport).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("Finish")).toBeNull();
+  });
+
+  it("waits for an answer that is still streaming before evaluating", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    services.ai.streamChat = async function* () {
+      await gate;
+      yield { content: "reply", done: false };
+      yield { content: "", done: true };
+    };
+    renderPage();
+    await startInterview();
+
+    const input = await screen.findByPlaceholderText("Explain your approach...");
+    fireEvent.change(input, { target: { value: "my answer" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    // The interview ends (Finish here; a timer expiry dispatches the same state)
+    // while the interviewer reply to the last answer is still streaming.
+    fireEvent.click(screen.getByText("Finish"));
+    await screen.findByText("Evaluating Your Performance...");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(synthesizeFinalReport).not.toHaveBeenCalled();
+
+    release();
+    expect(await screen.findByText("evaluation from test-model")).toBeTruthy();
+    expect(onMessageExchange).toHaveBeenCalledWith("my answer", "reply");
+    expect(onMessageExchange.mock.invocationCallOrder[0]).toBeLessThan(
+      synthesizeFinalReport.mock.invocationCallOrder[0]
+    );
   });
 });
