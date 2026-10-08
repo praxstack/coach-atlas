@@ -60,14 +60,23 @@ const MODEL_CONTEXT_LIMITS: Record<string, number> = {
  */
 const MODEL_CONTEXT_PATTERNS: Array<[RegExp, number]> = [
   [/^gpt-4(?!o|\.|-turbo)(-\d{4})?$/, 8192],
+  [/gpt-3\.5-turbo-(instruct|0613|0301)/, 4096],
   [/gpt-3\.5/, 16385],
   [/gpt-(5|4\.1|4o|4-turbo)|(^|[^a-z])o[1-9]/, 128000],
-  [/claude/, 200000],
+  // Legacy Claude (instant, v1, v2.x) had 100k; only known 200k families get 200k.
+  [/claude-(instant|v1|v2|2)/, 100000],
+  [/claude-(3|4|sonnet|opus|haiku)/, 200000],
   [/gemini-(1\.5|2|3)/, 1000000],
   [/gemini/, 32000],
   [/titan-text-premier/, 32000],
   [/titan-text-express/, 8192],
-  [/llama3|mistral-large/, 128000],
+  [/titan-text-lite/, 4096],
+  // Llama 3.0 (llama3-8b / llama3-70b) is 8k; Llama 3.1+ is 128k.
+  [/llama3-\d+b/, 8192],
+  [/llama3-[1-9]/, 128000],
+  // Mistral Large 2402 is 32k; 2407 and later are 128k.
+  [/mistral-large-(2407|2411|3)/, 128000],
+  [/mistral-large/, 32000],
 ];
 
 // Default context limit if model not found (modern models all exceed this)

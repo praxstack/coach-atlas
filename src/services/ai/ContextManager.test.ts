@@ -33,3 +33,25 @@ describe("getAvailableTokens (review minor-3)", () => {
     expect(getAvailableTokens("gpt-4o")).toBe(128000 - 4096 - 500);
   });
 });
+
+describe("legacy ids stay conservative (review minor-4)", () => {
+  it.each([
+    ["meta.llama3-8b-instruct-v1:0", 8192],
+    ["meta.llama3-70b-instruct-v1:0", 8192],
+    ["meta.llama3-1-70b-instruct-v1:0", 128000],
+    ["meta.llama3-3-70b-instruct-v1:0", 128000],
+    ["mistral.mistral-large-2402-v1:0", 32000],
+    ["mistral.mistral-large-2407-v1:0", 128000],
+    ["anthropic.claude-instant-v1", 100000],
+    ["anthropic.claude-v2", 100000],
+    ["anthropic.claude-v2:1", 100000],
+    ["anthropic.claude-3-haiku-20240307-v1:0", 200000],
+    ["claude-opus-4-1-20250805", 200000],
+    ["gpt-3.5-turbo-instruct", 4096],
+    ["gpt-3.5-turbo-0613", 4096],
+    ["gpt-3.5-turbo-16k-0613", 16385],
+    ["amazon.titan-text-lite-v1", 4096],
+  ])("resolves %s to %i", (model, limit) => {
+    expect(getContextLimit(model)).toBe(limit);
+  });
+});
