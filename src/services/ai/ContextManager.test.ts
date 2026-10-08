@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getContextLimit } from "./ContextManager";
+import { getAvailableTokens, getContextLimit } from "./ContextManager";
 
 describe("getContextLimit (COA-033)", () => {
   it("keeps exact table entries", () => {
@@ -24,5 +24,12 @@ describe("getContextLimit (COA-033)", () => {
 
   it("falls back to a non-crippling default for unknown ids", () => {
     expect(getContextLimit("some-new-model")).toBeGreaterThanOrEqual(32000);
+  });
+});
+
+describe("getAvailableTokens (review minor-3)", () => {
+  it("reserves the reasoning completion budget for reasoning models", () => {
+    expect(getAvailableTokens("o1-mini")).toBe(128000 - 25000 - 500);
+    expect(getAvailableTokens("gpt-4o")).toBe(128000 - 4096 - 500);
   });
 });

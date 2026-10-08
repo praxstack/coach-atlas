@@ -12,6 +12,7 @@
  */
 import type { Message } from "../types";
 import { SYSTEM_PROMPT } from "./AIService";
+import { defaultMaxTokens } from "./adapters/OpenAIAdapter";
 
 /**
  * Model context window configurations
@@ -116,7 +117,10 @@ export function getContextLimit(model: string): number {
  */
 export function getAvailableTokens(model: string): number {
   const limit = getContextLimit(model);
-  return limit - OUTPUT_TOKEN_RESERVE - SAFETY_BUFFER;
+  // Reasoning models get a larger completion budget (hidden reasoning tokens
+  // count against it), so reserve that much of the window too.
+  const outputReserve = Math.max(OUTPUT_TOKEN_RESERVE, defaultMaxTokens(model));
+  return limit - outputReserve - SAFETY_BUFFER;
 }
 
 /**

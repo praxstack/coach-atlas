@@ -30,6 +30,26 @@ export function isReasoningModel(model: string): boolean {
   return /^(o\d|gpt-5)/i.test(model);
 }
 
+/**
+ * For reasoning models, max_completion_tokens covers hidden reasoning tokens
+ * as well as the visible reply, so 4096 can be spent entirely on reasoning
+ * and return an empty answer. OpenAI recommends reserving about 25k.
+ */
+export const DEFAULT_MAX_TOKENS = 4096;
+export const REASONING_DEFAULT_MAX_TOKENS = 25000;
+
+export function defaultMaxTokens(model: string): number {
+  return isReasoningModel(model) ? REASONING_DEFAULT_MAX_TOKENS : DEFAULT_MAX_TOKENS;
+}
+
+/** Thrown when the token budget ran out before the model produced any text. */
+export function emptyLengthError(model: string): Error {
+  return new Error(
+    `OpenAI returned no text for ${model}: the token limit was used up before an answer ` +
+      `(finish_reason "length"). Shorten the conversation or choose a non-reasoning model.`
+  );
+}
+
 /** o1-preview / o1-mini accept neither system nor developer messages. */
 function rejectsInstructionRole(model: string): boolean {
   return /^o1-(preview|mini)/i.test(model);
@@ -87,7 +107,8 @@ export class OpenAIAdapter {
    * Send message to OpenAI API
    */
   async sendMessage(request: AIRequest): Promise<AIResponse> {
-    const { messages, config, systemPrompt, maxTokens = 4096 } = request;
+    const { messages, config, systemPrompt } = request;
+    const maxTokens = request.maxTokens ?? defaultMaxTokens(config.model);
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
@@ -110,9 +131,14 @@ export class OpenAIAdapter {
     }
 
     const data: OpenAIResponse = await response.json();
+    const choice = data.choices[0];
+    const content = choice?.message?.content || "";
+    if (!content && choice?.finish_reason === "length") {
+      throw emptyLengthError(config.model);
+    }
 
     return {
-      content: data.choices[0]?.message?.content || "",
+      content,
       model: config.model,
       usage: data.usage
         ? {
@@ -129,7 +155,8 @@ export class OpenAIAdapter {
    * Yields chunks as they arrive for real-time display
    */
   async *streamMessage(request: AIRequest): AsyncGenerator<StreamChunk> {
-    const { messages, config, systemPrompt, maxTokens = 4096 } = request;
+    const { messages, config, systemPrompt } = request;
+    const maxTokens = request.maxTokens ?? defaultMaxTokens(config.model);
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
@@ -159,12 +186,17 @@ export class OpenAIAdapter {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let yieldedText = false;
+    let finishReason: string | undefined;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
 
         if (done) {
+          if (!yieldedText && finishReason === "length") {
+            throw emptyLengthError(config.model);
+          }
           yield { content: "", done: true };
           break;
         }
@@ -180,8 +212,11 @@ export class OpenAIAdapter {
           if (trimmed.startsWith("data: ")) {
             try {
               const json = JSON.parse(trimmed.slice(6));
-              const content = json.choices?.[0]?.delta?.content || "";
+              const choice = json.choices?.[0];
+              if (choice?.finish_reason) finishReason = choice.finish_reason;
+              const content = choice?.delta?.content || "";
               if (content) {
+                yieldedText = true;
                 yield { content, done: false };
               }
             } catch {
