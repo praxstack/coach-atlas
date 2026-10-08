@@ -149,4 +149,47 @@ describe("OpenAIAdapter", () => {
       await expect(generator.next()).rejects.toThrow();
     });
   });
+
+  describe("reasoning model request shape (COA-034)", () => {
+    const msgs = [{ id: "1", role: "user", content: "hi" }] as unknown as Message[];
+
+    it("uses max_completion_tokens and developer role for o3/gpt-5", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ choices: [{ message: { content: "x" } }] }),
+      });
+      await adapter.sendMessage({
+        messages: msgs,
+        config: { provider: "openai", apiKey: "k", model: "gpt-5" },
+        systemPrompt: "sys",
+        maxTokens: 100,
+      } as AIRequest);
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.max_completion_tokens).toBe(100);
+      expect(body.max_tokens).toBeUndefined();
+      expect(body.messages[0].role).toBe("developer");
+    });
+
+    it("keeps max_tokens and system role for gpt-4o", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ choices: [{ message: { content: "x" } }] }),
+      });
+      await adapter.sendMessage({
+        messages: msgs,
+        config: { provider: "openai", apiKey: "k", model: "gpt-4o" },
+        systemPrompt: "sys",
+        maxTokens: 100,
+      } as AIRequest);
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.max_tokens).toBe(100);
+      expect(body.messages[0].role).toBe("system");
+    });
+
+    it("folds the system prompt into the first user turn for o1-mini", () => {
+      const out = adapter.formatMessages(msgs, "sys", "o1-mini");
+      expect(out).toHaveLength(1);
+      expect(out[0]).toEqual({ role: "user", content: "sys\n\nhi" });
+    });
+  });
 });

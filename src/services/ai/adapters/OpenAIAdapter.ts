@@ -6,7 +6,7 @@
 import type { AIRequest, AIResponse, Message, StreamChunk } from "../../types";
 
 interface OpenAIMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "developer" | "user" | "assistant";
   content: string;
 }
 
@@ -25,35 +25,62 @@ interface OpenAIResponse {
   };
 }
 
+/** o-series and gpt-5 models are reasoning models with a different chat API contract. */
+export function isReasoningModel(model: string): boolean {
+  return /^(o\d|gpt-5)/i.test(model);
+}
+
+/** o1-preview / o1-mini accept neither system nor developer messages. */
+function rejectsInstructionRole(model: string): boolean {
+  return /^o1-(preview|mini)/i.test(model);
+}
+
 export class OpenAIAdapter {
   private baseUrl = "https://api.openai.com/v1";
 
   /**
    * Convert internal messages to OpenAI format
    */
-  private formatMessages(
+  formatMessages(
     messages: Message[],
-    systemPrompt?: string
+    systemPrompt?: string,
+    model = ""
   ): OpenAIMessage[] {
     const formatted: OpenAIMessage[] = [];
+    let foldIntoFirstUser: string | undefined;
 
     // Add system prompt first
     if (systemPrompt) {
-      formatted.push({
-        role: "system",
-        content: systemPrompt,
-      });
+      if (rejectsInstructionRole(model)) {
+        foldIntoFirstUser = systemPrompt;
+      } else {
+        formatted.push({
+          role: isReasoningModel(model) ? "developer" : "system",
+          content: systemPrompt,
+        });
+      }
     }
 
     // Add conversation messages
     for (const msg of messages) {
       formatted.push({
         role: msg.role,
-        content: msg.content,
+        content:
+          foldIntoFirstUser !== undefined && msg.role === "user"
+            ? `${foldIntoFirstUser}\n\n${msg.content}`
+            : msg.content,
       });
+      if (msg.role === "user") foldIntoFirstUser = undefined;
     }
 
     return formatted;
+  }
+
+  /** Token-limit parameter name differs for reasoning models. */
+  tokenLimitParam(model: string, maxTokens: number): Record<string, number> {
+    return isReasoningModel(model)
+      ? { max_completion_tokens: maxTokens }
+      : { max_tokens: maxTokens };
   }
 
   /**
@@ -70,8 +97,8 @@ export class OpenAIAdapter {
       },
       body: JSON.stringify({
         model: config.model,
-        messages: this.formatMessages(messages, systemPrompt),
-        max_tokens: maxTokens,
+        messages: this.formatMessages(messages, systemPrompt, config.model),
+        ...this.tokenLimitParam(config.model, maxTokens),
       }),
     });
 
@@ -112,8 +139,8 @@ export class OpenAIAdapter {
       },
       body: JSON.stringify({
         model: config.model,
-        messages: this.formatMessages(messages, systemPrompt),
-        max_tokens: maxTokens,
+        messages: this.formatMessages(messages, systemPrompt, config.model),
+        ...this.tokenLimitParam(config.model, maxTokens),
         stream: true, // Enable streaming
       }),
     });
