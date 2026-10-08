@@ -525,14 +525,17 @@ export class ProgressiveEvaluator {
   async synthesizeFinalReport(): Promise<EvaluationReport> {
     console.log("[ProgressiveEvaluator] Synthesizing final report...");
 
-    // Ensure all exchanges are evaluated
-    if (this.state.lastEvaluatedIndex < this.exchanges.length - 1) {
+    // Ensure all exchanges are evaluated. Take the same lock as the background
+    // micro-evaluation so an in-flight one finishes first and its range is not
+    // evaluated (and its score deltas applied) a second time.
+    await this.evaluationMutex.withLock(async () => {
+      if (this.state.lastEvaluatedIndex >= this.exchanges.length - 1) return;
       try {
         await this.runMicroEvaluation();
       } catch (error) {
         console.warn("[ProgressiveEvaluator] Final micro-eval failed, using current state");
       }
-    }
+    });
 
     const durationMinutes = Math.floor((Date.now() - this.state.startTime) / 60000);
 
