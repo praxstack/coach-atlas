@@ -12,6 +12,7 @@
  */
 import type { Message } from "../types";
 import { SYSTEM_PROMPT } from "./AIService";
+import { defaultMaxTokens } from "./adapters/OpenAIAdapter";
 
 /**
  * Model context window configurations
@@ -52,8 +53,34 @@ const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   "mistral.mistral-large-2407-v1:0": 128000,
 };
 
-// Default context limit if model not found
-const DEFAULT_CONTEXT_LIMIT = 8000;
+/**
+ * Pattern fallbacks for model ids that are not in the exact table
+ * (dated snapshots, new minor versions, Bedrock/regional prefixes).
+ * First match wins, so order specific patterns before general ones.
+ */
+const MODEL_CONTEXT_PATTERNS: Array<[RegExp, number]> = [
+  [/^gpt-4(?!o|\.|-turbo)(-\d{4})?$/, 8192],
+  [/gpt-3\.5-turbo-(instruct|0613|0301)/, 4096],
+  [/gpt-3\.5/, 16385],
+  [/gpt-(5|4\.1|4o|4-turbo)|(^|[^a-z])o[1-9]/, 128000],
+  // Legacy Claude (instant, v1, v2.x) had 100k; only known 200k families get 200k.
+  [/claude-(instant|v1|v2|2)/, 100000],
+  [/claude-(3|4|sonnet|opus|haiku)/, 200000],
+  [/gemini-(1\.5|2|3)/, 1000000],
+  [/gemini/, 32000],
+  [/titan-text-premier/, 32000],
+  [/titan-text-express/, 8192],
+  [/titan-text-lite/, 4096],
+  // Llama 3.0 (llama3-8b / llama3-70b) is 8k; Llama 3.1+ is 128k.
+  [/llama3-\d+b/, 8192],
+  [/llama3-[1-9]/, 128000],
+  // Mistral Large 2402 is 32k; 2407 and later are 128k.
+  [/mistral-large-(2407|2411|3)/, 128000],
+  [/mistral-large/, 32000],
+];
+
+// Default context limit if model not found (modern models all exceed this)
+const DEFAULT_CONTEXT_LIMIT = 32000;
 
 // Safety buffer: reserve tokens for response generation
 const OUTPUT_TOKEN_RESERVE = 4096;
@@ -85,7 +112,13 @@ export function estimateMessageTokens(message: Message): number {
  * Get the context limit for a model
  */
 export function getContextLimit(model: string): number {
-  return MODEL_CONTEXT_LIMITS[model] || DEFAULT_CONTEXT_LIMIT;
+  const exact = MODEL_CONTEXT_LIMITS[model];
+  if (exact) return exact;
+  const id = (model || "").toLowerCase();
+  for (const [pattern, limit] of MODEL_CONTEXT_PATTERNS) {
+    if (pattern.test(id)) return limit;
+  }
+  return DEFAULT_CONTEXT_LIMIT;
 }
 
 /**
@@ -93,7 +126,10 @@ export function getContextLimit(model: string): number {
  */
 export function getAvailableTokens(model: string): number {
   const limit = getContextLimit(model);
-  return limit - OUTPUT_TOKEN_RESERVE - SAFETY_BUFFER;
+  // Reasoning models get a larger completion budget (hidden reasoning tokens
+  // count against it), so reserve that much of the window too.
+  const outputReserve = Math.max(OUTPUT_TOKEN_RESERVE, defaultMaxTokens(model));
+  return limit - outputReserve - SAFETY_BUFFER;
 }
 
 /**

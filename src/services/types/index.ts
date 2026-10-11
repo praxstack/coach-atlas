@@ -87,6 +87,8 @@ export interface AIRequest {
   systemPrompt?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Aborts the provider request (e.g. when the user cancels an evaluation). */
+  signal?: AbortSignal;
 }
 
 export interface AIResponse {

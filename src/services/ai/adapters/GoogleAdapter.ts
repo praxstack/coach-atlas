@@ -77,6 +77,7 @@ export class GoogleAdapter {
         body: JSON.stringify({
           contents: this.formatMessages(messages, systemPrompt),
         }),
+        signal: request.signal,
       }
     );
 
@@ -118,6 +119,7 @@ export class GoogleAdapter {
         body: JSON.stringify({
           contents: this.formatMessages(messages, systemPrompt),
         }),
+        signal: request.signal,
       }
     );
 

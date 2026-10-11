@@ -24,209 +24,12 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-
-// ============================================
-// Action Types
-// ============================================
-
-type InterviewAction =
-  | { type: "START_SETUP"; config: InterviewConfig }
-  | { type: "CONFIRM_SETUP"; session: InterviewSession }
-  | { type: "CANCEL" }
-  | { type: "PAUSE" }
-  | { type: "RESUME" }
-  | { type: "TICK"; remainingMs: number }
-  | { type: "USE_HINT" }
-  | { type: "TIMEOUT" }
-  | { type: "SUBMIT" }
-  | { type: "SET_EVALUATION"; evaluation: EvaluationReport }
-  | { type: "NEXT_PROBLEM"; problem: InterviewProblem }
-  | { type: "RESTORE_SESSION"; session: InterviewSession }
-  | { type: "ADD_MESSAGE_ID"; messageId: string };
-
-// ============================================
-// State Type
-// ============================================
-
-interface InterviewState {
-  status: InterviewStatus;
-  session: InterviewSession | null;
-  config: InterviewConfig | null;
-  remainingMs: number; // milliseconds remaining
-  error: string | null;
-}
-
-const initialState: InterviewState = {
-  status: "idle",
-  session: null,
-  config: null,
-  remainingMs: 0,
-  error: null,
-};
-
-// ============================================
-// Reducer
-// ============================================
-
-function interviewReducer(
-  state: InterviewState,
-  action: InterviewAction
-): InterviewState {
-  switch (action.type) {
-    case "START_SETUP":
-      return {
-        ...state,
-        status: "setup",
-        config: action.config,
-        error: null,
-      };
-
-    case "CONFIRM_SETUP":
-      return {
-        ...state,
-        status: "active",
-        session: action.session,
-        remainingMs: action.session.durationMinutes * 60 * 1000,
-      };
-
-    case "CANCEL":
-      return initialState;
-
-    case "PAUSE":
-      if (
-        state.status !== "active" ||
-        !state.session ||
-        state.session.pauseCount >= INTERVIEW_CONSTANTS.MAX_PAUSES
-      ) {
-        return state;
-      }
-      return {
-        ...state,
-        status: "paused",
-        session: {
-          ...state.session,
-          status: "paused",
-          pausedAt: Date.now(),
-          pauseCount: state.session.pauseCount + 1,
-          updatedAt: Date.now(),
-        },
-      };
-
-    case "RESUME":
-      if (state.status !== "paused" || !state.session) {
-        return state;
-      }
-      const pausedDuration = state.session.pausedAt
-        ? Date.now() - state.session.pausedAt
-        : 0;
-      return {
-        ...state,
-        status: "active",
-        session: {
-          ...state.session,
-          status: "active",
-          pausedAt: undefined,
-          totalPausedTime: state.session.totalPausedTime + pausedDuration,
-          updatedAt: Date.now(),
-        },
-      };
-
-    case "TICK":
-      if (state.status !== "active") {
-        return state;
-      }
-      return {
-        ...state,
-        remainingMs: action.remainingMs,
-      };
-
-    case "USE_HINT":
-      if (!state.session) return state;
-      const problemIndex = state.session.currentProblemIndex;
-      const newHintsUsed = [...state.session.hintsUsedPerProblem];
-      newHintsUsed[problemIndex] = (newHintsUsed[problemIndex] || 0) + 1;
-      return {
-        ...state,
-        session: {
-          ...state.session,
-          hintsUsedPerProblem: newHintsUsed,
-          updatedAt: Date.now(),
-        },
-      };
-
-    case "TIMEOUT":
-    case "SUBMIT":
-      if (state.status !== "active" && state.status !== "paused") {
-        return state;
-      }
-      return {
-        ...state,
-        status: "submitted",
-        session: state.session
-          ? {
-              ...state.session,
-              status: "submitted",
-              updatedAt: Date.now(),
-            }
-          : null,
-      };
-
-    case "SET_EVALUATION":
-      return {
-        ...state,
-        status: "review",
-        session: state.session
-          ? {
-              ...state.session,
-              status: "review",
-              evaluation: action.evaluation,
-              updatedAt: Date.now(),
-            }
-          : null,
-      };
-
-    case "NEXT_PROBLEM":
-      if (!state.session) return state;
-      return {
-        ...state,
-        status: "active",
-        remainingMs: state.session.durationMinutes * 60 * 1000,
-        session: {
-          ...state.session,
-          status: "active",
-          currentProblemIndex: state.session.currentProblemIndex + 1,
-          problems: [...state.session.problems, action.problem],
-          evaluation: undefined,
-          updatedAt: Date.now(),
-        },
-      };
-
-    case "RESTORE_SESSION": {
-      const elapsed = Date.now() - action.session.startTime - action.session.totalPausedTime;
-      const remaining = Math.max(0, action.session.durationMinutes * 60 * 1000 - elapsed);
-      return {
-        ...state,
-        status: action.session.status,
-        session: action.session,
-        remainingMs: remaining,
-      };
-    }
-
-    case "ADD_MESSAGE_ID":
-      if (!state.session) return state;
-      return {
-        ...state,
-        session: {
-          ...state.session,
-          chatMessageIds: [...state.session.chatMessageIds, action.messageId],
-          updatedAt: Date.now(),
-        },
-      };
-
-    default:
-      return state;
-  }
-}
+import {
+  computeRemainingMs,
+  initialState,
+  interviewReducer,
+  type InterviewState,
+} from "./interviewReducer";
 
 // ============================================
 // Timer Helpers
@@ -272,7 +75,8 @@ interface InterviewContextValue {
   submit: () => void;
   timeout: () => void;
   useHint: () => void;
-  setEvaluation: (evaluation: EvaluationReport) => void;
+  /** Applies only if `sessionId` is the session currently awaiting evaluation. */
+  setEvaluation: (evaluation: EvaluationReport, sessionId: string) => void;
   nextProblem: (problem: InterviewProblem) => void;
   restoreSession: (session: InterviewSession) => void;
   addMessageId: (messageId: string) => void;
@@ -355,9 +159,12 @@ export function InterviewProvider({ children }: InterviewProviderProps) {
     dispatch({ type: "USE_HINT" });
   }, []);
 
-  const setEvaluation = useCallback((evaluation: EvaluationReport) => {
-    dispatch({ type: "SET_EVALUATION", evaluation });
-  }, []);
+  const setEvaluation = useCallback(
+    (evaluation: EvaluationReport, sessionId: string) => {
+      dispatch({ type: "SET_EVALUATION", evaluation, sessionId });
+    },
+    []
+  );
 
   const nextProblem = useCallback((problem: InterviewProblem) => {
     dispatch({ type: "NEXT_PROBLEM", problem });
@@ -374,6 +181,22 @@ export function InterviewProvider({ children }: InterviewProviderProps) {
   const updateRemainingMs = useCallback((ms: number) => {
     dispatch({ type: "TICK", remainingMs: ms });
   }, []);
+
+  // ========== Countdown: drive TICK while active, TIMEOUT at zero ==========
+  const activeSession = state.session;
+  useEffect(() => {
+    if (state.status !== "active" || !activeSession) return;
+    const tick = () => {
+      const remaining = computeRemainingMs(activeSession, Date.now());
+      dispatch({ type: "TICK", remainingMs: remaining });
+      if (remaining <= 0) {
+        dispatch({ type: "TIMEOUT" });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [state.status, activeSession]);
 
   // ========== Auto-resume from pause timeout ==========
   useEffect(() => {

@@ -10,6 +10,7 @@
  * - Copy-to-clipboard for code blocks
  * - XSS protection (DOMPurify)
  */
+import { buildMermaidErrorNode } from "./mermaidError";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { marked, type TokenizerAndRendererExtension, type Tokens } from "marked";
@@ -175,7 +176,7 @@ async function initMermaid() {
   mermaid.default.initialize({
     startOnLoad: false,
     theme: "dark",
-    securityLevel: "loose",
+    securityLevel: "strict",
     suppressErrorRendering: true, // Don't render error diagrams
   } as Parameters<typeof mermaid.default.initialize>[0]);
   mermaidInitialized = true;
@@ -297,9 +298,7 @@ async function renderMermaidDiagrams(container: HTMLElement) {
       // Only show error if diagram looks complete but still fails
       if (isMermaidDiagramComplete(code)) {
         console.warn("Mermaid rendering error (complete diagram):", error);
-        const errorWrapper = document.createElement("div");
-        errorWrapper.className = "mermaid-error";
-        errorWrapper.innerHTML = `<span>⚠️ Diagram syntax error</span><pre>${code.slice(0, 100)}...</pre>`;
+        const errorWrapper = buildMermaidErrorNode(code);
         pre.replaceWith(errorWrapper);
         renderedMermaidBlocks.add(errorWrapper);
       }
